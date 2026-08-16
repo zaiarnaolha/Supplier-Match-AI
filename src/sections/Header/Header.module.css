@@ -1,2 +1,9 @@
 .header{height:var(--header-height);border-bottom:1px solid var(--semantic-border-subtle);background:rgb(255 255 255 / 96%)}.inner{display:flex;height:100%;align-items:center;justify-content:space-between}.inner>a img{width:145px;height:auto}.inner nav{display:flex;gap:var(--spacing-8);margin-left:auto;margin-right:var(--spacing-20)}.inner nav a{color:var(--semantic-text-muted);font-size:12px;font-weight:500}.actions{display:flex;align-items:center;gap:var(--spacing-3)}
+.actions > button:nth-of-type(1){
+  width:64px;
+}
+
+.actions > button:nth-of-type(2){
+  width:132px;
+}
 @media(max-width:900px){.header{height:52px}.inner>a img{width:132px}.inner nav,.actions>button{display:none}.actions{gap:0}}
