@@ -1,0 +1,1 @@
+import styles from '../Sections.module.css';export function ProductIntro({content}:{content:{title:string;text:string}}){return <section className={`${styles.section} ${styles.intro}`}><div className={`container ${styles.introInner}`}><h2 className={styles.heading}>{content.title}</h2><p className={styles.body}>{content.text}</p></div></section>}
