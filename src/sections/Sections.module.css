@@ -52,5 +52,10 @@
   margin:0 0 var(--spacing-10);
 }.intro{padding-block:var(--spacing-16)}.intro p{margin-top:var(--spacing-5)}.features h2,.faq h2{margin-bottom:var(--spacing-8)}.featureList{gap:var(--spacing-3)}.howHeader{margin-bottom:var(--spacing-6)}.stepGrid{display:grid;grid-template-columns:1fr;grid-template-rows:none;grid-auto-flow:row;gap:var(--spacing-3)}.trust p{margin-top:var(--spacing-5)}.ctaSection{padding:var(--spacing-16) 0}.cta{padding:var(--spacing-10) var(--spacing-6)}.cta h2{font-size:28px}.cta button{
   width:100%;
-  max-width:420px;
 }.footerInner{display:flex;min-height:176px;flex-direction:column;justify-content:center;gap:var(--spacing-4);text-align:center}.footer img{width:140px}.footer p:last-child{text-align:center}}
+@media (min-width:481px) and (max-width:900px){
+  .cta button{
+    width:auto;
+    min-width:220px;
+  }
+}
