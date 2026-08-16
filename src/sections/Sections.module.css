@@ -33,6 +33,12 @@
   flex-wrap:wrap;
   gap:var(--spacing-4);
   margin-top:var(--spacing-8)
+}.heroActions button:first-child{
+  width:220px;
+}
+
+.heroActions button:last-child{
+  width:194px;
 }
 
 .heroImage{
