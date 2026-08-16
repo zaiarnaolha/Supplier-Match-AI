@@ -1,0 +1,1 @@
+import styles from '../Sections.module.css';export function Trust({content}:{content:{title:string;text:string}}){return <section className={`${styles.section} ${styles.trust}`}><div className="container"><div className="content-column"><h2 className={styles.heading}>{content.title}</h2><p className={styles.body}>{content.text}</p></div></div></section>}

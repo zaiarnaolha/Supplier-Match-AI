@@ -1,0 +1,1 @@
+.switcher{display:flex;gap:var(--spacing-3)}.switcher button{padding:4px 0;color:var(--semantic-text-inactive);background:transparent;font-size:12px;font-weight:600;cursor:pointer}.switcher .active{color:var(--semantic-text-primary)}

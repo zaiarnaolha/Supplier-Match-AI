@@ -1,0 +1,44 @@
+:root {
+  /* Confirmed design-system values */
+  --semantic-action-primary: #4f46e5;
+  --semantic-text-primary: #0f1117;
+  --semantic-text-on-primary: #ffffff;
+
+  /* Handoff-derived implementation values measured from the supplied PNGs */
+  --semantic-action-primary-hover: #4338ca;
+  --semantic-text-muted: #697080;
+  --semantic-text-subtle: #9aa0ad;
+  --semantic-text-inactive: #a1a6b0;
+  --semantic-text-on-dark-muted: #8d93a2;
+  --semantic-surface-default: #ffffff;
+  --semantic-surface-subtle: #f7f8fa;
+  --semantic-surface-muted: #f2f3f5;
+  --semantic-surface-dark: #0d0f15;
+  --semantic-surface-trust: #eef1ff;
+  --semantic-border-default: #e3e5ea;
+  --semantic-border-subtle: #eceef2;
+  --semantic-surface-accent-subtle: #eef0ff;
+  --semantic-focus: #7c74f2;
+
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --spacing-20: 80px;
+  --spacing-24: 96px;
+
+  --radius-small: 6px;
+  --radius-medium: 10px;
+  --radius-large: 18px;
+  --shadow-card: 0 1px 3px rgb(15 17 23 / 8%);
+  --container-width: 980px;
+  --content-width: 680px;
+  --header-height: 60px;
+  --mobile-breakpoint: 720px;
+}

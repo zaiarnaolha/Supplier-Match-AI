@@ -1,0 +1,15 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: var(--header-height); }
+body { margin: 0; min-width: 320px; color: var(--semantic-text-primary); background: var(--semantic-surface-default); font-family: Inter, sans-serif; -webkit-font-smoothing: antialiased; }
+button, a { font: inherit; }
+button { border: 0; }
+a { color: inherit; text-decoration: none; }
+img { display: block; max-width: 100%; }
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { font-family: 'Instrument Sans', sans-serif; letter-spacing: -0.035em; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--semantic-focus) 45%, transparent); outline-offset: 3px; }
+.container { width: min(calc(100% - 48px), var(--container-width)); margin-inline: auto; }
+.content-column { width: min(100%, var(--content-width)); margin-inline: auto; }
+@media (max-width: 720px) { .container { width: min(calc(100% - 40px), var(--container-width)); } }
