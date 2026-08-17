@@ -33,14 +33,16 @@
   flex-wrap:wrap;
   gap:var(--spacing-4);
   margin-top:var(--spacing-8)
-}.heroActions button:first-child{
+}
+.heroActions button:first-child{
   width:220px;
+  flex-shrink:0;
 }
 
 .heroActions button:last-child{
   width:194px;
+  flex-shrink:0;
 }
-
 .heroImage{
   width:min(100%,620px);
   max-width:100%;
