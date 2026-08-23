@@ -13,10 +13,6 @@ export function SupplierSearchPage() {
             <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground" aria-hidden="true">S</span>
             <span>Supplier Match AI</span>
           </Link>
-
-          <nav aria-label="Основна навігація">
-            <Link className="flex h-16 items-center border-b-2 border-primary px-2 text-sm font-medium text-primary" to="/app" aria-current="page">Пошук</Link>
-          </nav>
         </div>
       </header>
 
