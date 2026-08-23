@@ -1,2 +1,5 @@
-import { useEffect, useState } from 'react';import { copy, type Language } from './content';import { Header } from './sections/Header/Header';import { Hero } from './sections/Hero/Hero';import { ProductIntro } from './sections/ProductIntro/ProductIntro';import { Features } from './sections/Features/Features';import { HowItWorks } from './sections/HowItWorks/HowItWorks';import { FAQ } from './sections/FAQ/FAQ';import { Trust } from './sections/Trust/Trust';import { CTA } from './sections/CTA/CTA';import { Footer } from './sections/Footer/Footer';
-export function App(){const[language,setLanguage]=useState<Language>('en');const content=copy[language];useEffect(()=>{document.documentElement.lang=language==='ua'?'uk':'en'},[language]);return <><Header language={language} onLanguageChange={setLanguage} nav={content.nav}/><main><Hero content={content.hero}/><ProductIntro content={content.intro}/><Features content={content.features}/><HowItWorks content={content.how}/><FAQ content={content.faq}/><Trust content={content.trust}/><CTA content={content.cta}/></main><Footer content={content.footer}/></>}
+import { Route, Routes } from 'react-router-dom';
+import { LandingPage } from './pages/LandingPage/LandingPage';
+import { SupplierSearchPage } from './pages/SupplierSearchPage/SupplierSearchPage';
+
+export function App(){return <Routes><Route path="/" element={<LandingPage/>}/><Route path="/app" element={<SupplierSearchPage/>}/></Routes>}
