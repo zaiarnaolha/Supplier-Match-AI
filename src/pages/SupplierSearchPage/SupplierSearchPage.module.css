@@ -52,12 +52,14 @@
 .criteria > div:last-child { border-bottom: 0; }
 .criteria dt { color: #758196; font-size: 12px; line-height: 1.35; }
 .criteria dd { min-width: 0; color: #263248; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
-.statusIcon { display: inline-grid; width: 18px; height: 18px; place-items: center; justify-self: end; border-radius: 50%; cursor: help; }
+.statusIcon { position: relative; display: inline-grid; width: 18px; height: 18px; place-items: center; justify-self: end; border-radius: 50%; cursor: help; }
 .statusIcon:focus-visible { outline: 2px solid #7c74f2; outline-offset: 2px; }
+.statusIcon::after { position: absolute; z-index: 20; right: 0; bottom: calc(100% + 7px); padding: 5px 7px; border-radius: 5px; color: #fff; background: #283142; box-shadow: 0 3px 10px rgb(20 28 45 / 18%); content: attr(data-tooltip); font-size: 11px; font-weight: 500; line-height: 1.2; white-space: nowrap; opacity: 0; pointer-events: none; transform: translateY(2px); transition: opacity 120ms ease, transform 120ms ease; }
+.statusIcon:hover::after, .statusIcon:focus-visible::after { opacity: 1; transform: translateY(0); }
 .statusIcon svg { width: 13px; height: 13px; stroke-width: 2.5; }
 .statusIcon.success { color: #16804b; background: #e9f8f0; }
-.statusIcon.partial { border: 1px solid #e9a636; background: #fff8e9; }
-.statusIcon.partial > span { width: 10px; height: 10px; border: 1px solid #d98b18; border-radius: 50%; background: linear-gradient(90deg, #e29420 50%, transparent 50%); }
+.statusIcon.partial { color: #c97912; background: #fff3dc; }
+.statusIcon.partial > span { font-size: 15px; font-weight: 700; line-height: 1; transform: translateY(-1px); }
 .statusIcon.failure { color: #c73737; background: #fdecec; }
 .statusIcon.unknown { color: #687386; background: #f0f2f5; }
 .supplierActions { display: grid; min-width: 0; gap: 12px; }

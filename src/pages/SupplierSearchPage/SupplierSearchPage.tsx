@@ -37,15 +37,15 @@ const suppliers: Supplier[] = [
 
 function CriterionStatusIcon({ status }: { status: CriterionStatus }) {
   if (status === 'Відповідає') {
-    return <span aria-label={status} className={cn(styles.statusIcon, styles.success)} role="img" tabIndex={0} title={status}><Check aria-hidden="true" /></span>;
+    return <span aria-label={status} className={cn(styles.statusIcon, styles.success)} data-tooltip={status} role="img" tabIndex={0}><Check aria-hidden="true" /></span>;
   }
   if (status === 'Частково відповідає') {
-    return <span aria-label={status} className={cn(styles.statusIcon, styles.partial)} role="img" tabIndex={0} title={status}><span aria-hidden="true" /></span>;
+    return <span aria-label={status} className={cn(styles.statusIcon, styles.partial)} data-tooltip={status} role="img" tabIndex={0}><span aria-hidden="true">~</span></span>;
   }
   if (status === 'Не відповідає') {
-    return <span aria-label={status} className={cn(styles.statusIcon, styles.failure)} role="img" tabIndex={0} title={status}><X aria-hidden="true" /></span>;
+    return <span aria-label={status} className={cn(styles.statusIcon, styles.failure)} data-tooltip={status} role="img" tabIndex={0}><X aria-hidden="true" /></span>;
   }
-  return <span aria-label={status} className={cn(styles.statusIcon, styles.unknown)} role="img" tabIndex={0} title={status}><CircleHelp aria-hidden="true" /></span>;
+  return <span aria-label={status} className={cn(styles.statusIcon, styles.unknown)} data-tooltip={status} role="img" tabIndex={0}><CircleHelp aria-hidden="true" /></span>;
 }
 
 function Filters() {
