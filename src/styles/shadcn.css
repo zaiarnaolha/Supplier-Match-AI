@@ -29,7 +29,7 @@
   --app-foreground: oklch(0.145 0 0);
   --app-card: oklch(1 0 0);
   --app-card-foreground: oklch(0.145 0 0);
-  --app-primary: oklch(0.205 0 0);
+  --app-primary: oklch(0.511 0.262 276.966);
   --app-primary-foreground: oklch(0.985 0 0);
   --app-secondary: oklch(0.97 0 0);
   --app-secondary-foreground: oklch(0.205 0 0);
@@ -40,6 +40,6 @@
   --app-destructive: oklch(0.577 0.245 27.325);
   --app-border: oklch(0.922 0 0);
   --app-input: oklch(0.922 0 0);
-  --app-ring: oklch(0.708 0 0);
+  --app-ring: oklch(0.585 0.233 277.117);
   --app-radius: 0.625rem;
 }
