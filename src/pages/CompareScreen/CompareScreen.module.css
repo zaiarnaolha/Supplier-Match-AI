@@ -41,7 +41,7 @@
   .valueCell, .updatedCell, .actionCell { padding-inline: 14px; }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 600px) {
   .siteHeader { height: 58px; }
   .headerInner, .main { width: min(100% - 24px, 1240px); }
   .main { padding: 20px 0 40px; }
@@ -50,27 +50,26 @@
   .comparisonCard { padding: 15px; }
   .desktopMatrix { display: none; }
   .mobileComparison { display: block; }
-  .mobileSummaries { display: grid; gap: 10px; }
-  .mobileSummaries .summary { padding: 15px 42px 15px 15px; border: 1px solid #e5e8ef; border-radius: 10px; background: #fafbfe; }
-  .mobileSummaries .remove { top: 9px; right: 9px; }
-  .mobileCriteria { display: grid; gap: 14px; margin-top: 20px; }
-  .mobileCriteria > section { overflow: hidden; border: 1px solid #e5e8ef; border-radius: 10px; }
-  .mobileCriteria > section > h2 { padding: 12px 14px; color: #39445a; background: #f6f7fb; font-family: Inter, sans-serif; font-size: 13px; letter-spacing: 0; }
-  .mobileValue { display: grid; grid-template-columns: minmax(0, 1fr) 18px; align-items: center; gap: 12px; padding: 13px 14px; border-top: 1px solid #edf0f4; }
-  .mobileValue > div { display: grid; min-width: 0; gap: 4px; }
-  .mobileValue strong { overflow-wrap: anywhere; color: #59657a; font-size: 11px; line-height: 1.35; }
-  .mobileValue div > span { overflow-wrap: anywhere; color: #202a3d; font-size: 13px; line-height: 1.45; }
-  .mobileActions { margin-top: 20px; padding-top: 18px; border-top: 1px solid #e5e8ef; }
-  .mobileActions > h2 { margin-bottom: 4px; font-family: Inter, sans-serif; font-size: 14px; letter-spacing: 0; }
-  .mobileActions > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #edf0f4; }
-  .mobileActions > div:last-child { border-bottom: 0; }
-  .mobileActions > div > div { display: grid; min-width: 0; gap: 4px; }
-  .mobileActions strong { overflow-wrap: anywhere; font-size: 12px; line-height: 1.35; }
-  .mobileActions span { color: #8b95a8; font-size: 10px; line-height: 1.35; }
-  .mobileActions button { max-width: 142px; min-height: 40px; padding: 7px 10px; background: #4f46e5; font-size: 10px; line-height: 1.25; white-space: normal; }
-}
-
-@media (max-width: 390px) {
-  .mobileActions > div { grid-template-columns: 1fr; }
-  .mobileActions button { width: 100%; max-width: none; }
+  .mobilePicker { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 7px; margin-bottom: 14px; }
+  .mobilePicker > strong { min-width: 0; color: #39445a; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+  .mobilePicker > span { color: #98a1b2; font-size: 10px; font-weight: 600; }
+  .mobilePicker button { width: 100%; min-width: 0; height: 38px; padding-inline: 9px; border: 1px solid #d7dde7; color: #263248; background: #fff !important; font-size: 11px; }
+  .mobileSupplierHeaders, .mobileColumns { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mobileSupplierHeaders { overflow: hidden; border: 1px solid #e5e8ef; border-radius: 10px 10px 0 0; background: #fafbfe; }
+  .mobileSupplierHeaders article { position: relative; min-width: 0; padding: 13px 28px 13px 11px; }
+  .mobileSupplierHeaders article + article { border-left: 1px solid #e5e8ef; }
+  .mobileSupplierHeaders button { position: absolute; top: 7px; right: 6px; display: grid; width: 24px; height: 24px; place-items: center; border-radius: 6px; color: #7a8497; background: transparent; cursor: pointer; }
+  .mobileSupplierHeaders h2 { overflow-wrap: anywhere; font-family: Inter, sans-serif; font-size: 12px; line-height: 1.35; letter-spacing: 0; }
+  .mobileSupplierHeaders p { display: flex; align-items: flex-start; gap: 3px; margin-top: 5px; color: #758196; font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
+  .mobileSupplierHeaders p svg { flex: 0 0 auto; }
+  .mobileSupplierHeaders article > strong { display: block; margin-top: 8px; color: #08753b; font-size: 12px; }
+  .mobileMatrix { border: 1px solid #e5e8ef; border-top: 0; border-radius: 0 0 10px 10px; }
+  .mobileMatrix > section + section { border-top: 1px solid #e5e8ef; }
+  .mobileMatrix h2 { padding: 7px 10px; color: #59657a; background: #f6f7fb; font-family: Inter, sans-serif; font-size: 10px; letter-spacing: 0; }
+  .mobileColumns > * { min-width: 0; padding: 10px; }
+  .mobileColumns > * + * { border-left: 1px solid #edf0f4; }
+  .mobileMatch { color: #08753b; font-size: 17px; }
+  .mobileValue { display: grid; grid-template-columns: minmax(0, 1fr) 18px; align-items: start; gap: 6px; color: #263248; font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+  .mobileActions { display: grid; gap: 9px; margin-top: 16px; }
+  .mobileActions button { width: 100%; min-height: 42px; padding: 8px 12px; background: #4f46e5; font-size: 11px; line-height: 1.3; white-space: normal; }
 }

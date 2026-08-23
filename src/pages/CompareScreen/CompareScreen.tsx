@@ -1,7 +1,9 @@
 import '../../styles/shadcn.css';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { ArrowLeft, MapPin, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { CriterionStatusIcon, type Supplier } from '../SupplierSearchPage/SupplierSearchPage';
 import styles from './CompareScreen.module.css';
@@ -15,6 +17,18 @@ type CompareScreenProps = {
 const criterionLabels = ['Товар', 'Регіон доставки', 'MOQ', 'Ціна'];
 
 export function CompareScreen({ suppliers, onBack, onRemove }: CompareScreenProps) {
+  const primarySupplier = suppliers[0];
+  const alternateSuppliers = suppliers.slice(1);
+  const [secondarySupplierName, setSecondarySupplierName] = useState(alternateSuppliers[0].name);
+  const secondarySupplier = alternateSuppliers.find(supplier => supplier.name === secondarySupplierName) ?? alternateSuppliers[0];
+  const mobileSuppliers = [primarySupplier, secondarySupplier];
+
+  useEffect(() => {
+    if (!alternateSuppliers.some(supplier => supplier.name === secondarySupplierName)) {
+      setSecondarySupplierName(alternateSuppliers[0].name);
+    }
+  }, [alternateSuppliers, secondarySupplierName]);
+
   return <div className={cn('shadcn', styles.page)}>
     <header className={styles.siteHeader}><div className={styles.headerInner}>
       <Link className={styles.brand} to="/app"><span>SM</span>Supplier Match <b>AI</b></Link>
@@ -27,7 +41,7 @@ export function CompareScreen({ suppliers, onBack, onRemove }: CompareScreenProp
       </div>
 
       <section className={styles.comparisonCard} aria-label="Порівняння вибраних постачальників">
-        <div className={styles.desktopMatrix} style={{ '--supplier-count': suppliers.length } as React.CSSProperties}>
+        <div className={styles.desktopMatrix} style={{ '--supplier-count': suppliers.length } as CSSProperties}>
           <div className={styles.emptyCell} aria-hidden="true" />
           {suppliers.map(supplier => <SupplierSummary key={supplier.name} supplier={supplier} onRemove={onRemove} />)}
           {criterionLabels.map(label => <div className={styles.matrixRow} key={label}>
@@ -50,25 +64,43 @@ export function CompareScreen({ suppliers, onBack, onRemove }: CompareScreenProp
         </div>
 
         <div className={styles.mobileComparison}>
-          <div className={styles.mobileSummaries}>{suppliers.map(supplier => <SupplierSummary key={supplier.name} supplier={supplier} onRemove={onRemove} />)}</div>
-          <div className={styles.mobileCriteria}>{criterionLabels.map(label => <section key={label}>
-            <h2>{label}</h2>
-            {suppliers.map(supplier => {
+          <div className={styles.mobilePicker}>
+            <strong>{primarySupplier.name}</strong><span>vs</span>
+            <Select value={secondarySupplier.name} onValueChange={setSecondarySupplierName}>
+              <SelectTrigger aria-label="Другий постачальник для порівняння"><SelectValue /></SelectTrigger>
+              <SelectContent>{alternateSuppliers.map(supplier => <SelectItem key={supplier.name} value={supplier.name}>{supplier.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className={styles.mobileSupplierHeaders}>{mobileSuppliers.map(supplier => <MobileSupplierHeader key={supplier.name} supplier={supplier} onRemove={onRemove} />)}</div>
+          <div className={styles.mobileMatrix}>
+            <section><h2>Match</h2><div className={styles.mobileColumns}>{mobileSuppliers.map(supplier => <strong className={styles.mobileMatch} key={supplier.name}>{supplier.match.split('%')[0]}%</strong>)}</div></section>
+            {criterionLabels.map(label => <section key={label}>
+              <h2>{label}</h2>
+              <div className={styles.mobileColumns}>{mobileSuppliers.map(supplier => {
               const criterion = supplier.criteria.find(item => item.label === label)!;
               return <div className={styles.mobileValue} key={supplier.name}>
-                <div><strong>{supplier.name}</strong><span>{criterion.value}</span></div>
+                <span>{criterion.value}</span>
                 <CriterionStatusIcon status={criterion.status} />
               </div>;
-            })}
-          </section>)}</div>
+              })}</div>
+            </section>)}
+          </div>
           <section className={styles.mobileActions} aria-label="Дії з постачальниками">
-            <h2>Постачальники</h2>
-            {suppliers.map(supplier => <div key={supplier.name}><div><strong>{supplier.name}</strong><span>Оновлено: {supplier.updatedAt}</span></div><Button type="button">Переглянути постачальника</Button></div>)}
+            {mobileSuppliers.map(supplier => <Button type="button" key={supplier.name}>Переглянути {supplier.name.split(' ').slice(0, 2).join(' ')}</Button>)}
           </section>
         </div>
       </section>
     </main>
   </div>;
+}
+
+function MobileSupplierHeader({ supplier, onRemove }: { supplier: Supplier; onRemove: (name: string) => void }) {
+  return <article>
+    <button type="button" onClick={() => onRemove(supplier.name)} aria-label={`Прибрати ${supplier.name} з порівняння`}><X aria-hidden="true" size={14} /></button>
+    <h2>{supplier.name}</h2>
+    <p><MapPin aria-hidden="true" size={12} />{supplier.location}</p>
+    <strong>Match {supplier.match.split('%')[0]}%</strong>
+  </article>;
 }
 
 function SupplierSummary({ supplier, onRemove }: { supplier: Supplier; onRemove: (name: string) => void }) {
