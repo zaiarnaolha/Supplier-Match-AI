@@ -109,7 +109,7 @@
   .criteria > div:last-child { border-bottom: 1px solid #eff1f5; }
   .criteria dt { font-size: 12px; }
   .criteria dd { font-size: 13px; }
-  .supplierActions { display: grid; grid-template-columns: 1fr; align-items: stretch; gap: 14px; margin-top: 9px; padding-top: 0; border-top: 0; }
+  .supplierActions { display: grid; grid-template-columns: 1fr; align-items: stretch; gap: 14px; margin-top: 0; padding-top: 0; border-top: 0; }
   .supplierActions label { font-size: 13px; }
   .supplierActions > button { width: 100%; height: 40px; font-size: 11px; }
 }
