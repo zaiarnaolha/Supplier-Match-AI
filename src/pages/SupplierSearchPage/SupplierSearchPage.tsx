@@ -140,7 +140,7 @@ export function SupplierSearchPage({ query, setQuery, stage, setStage, deliveryR
         </form>
         {stage === 'clarification' && <div className={styles.clarification}>
           <div><strong>Уточніть регіон доставки</strong><p>Це допоможе знайти релевантніші варіанти.</p></div>
-          <Select value={deliveryRegion} onValueChange={setDeliveryRegion}><SelectTrigger className={styles.neutralSelect} aria-label="Регіон отримання товару"><SelectValue placeholder="Оберіть регіон" /></SelectTrigger><SelectContent><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem><SelectItem value="asia">Азія</SelectItem><SelectItem value="anywhere">Будь-яка країна</SelectItem></SelectContent></Select>
+          <Select value={deliveryRegion} onValueChange={setDeliveryRegion}><SelectTrigger className={styles.neutralSelect} aria-label="Регіон отримання товару"><SelectValue placeholder="Оберіть регіон" /></SelectTrigger><SelectContent className={styles.clarificationSelectContent}><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem><SelectItem value="asia">Азія</SelectItem><SelectItem value="anywhere">Будь-яка країна</SelectItem></SelectContent></Select>
           <Button type="button" disabled={!deliveryRegion} onClick={() => setStage('search-ready')}>Продовжити пошук</Button>
         </div>}
       </section>
