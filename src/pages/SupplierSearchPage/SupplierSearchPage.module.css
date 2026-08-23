@@ -9,7 +9,7 @@
 .searchCard { padding: 22px 24px; }
 .searchCard h1 { margin-bottom: 14px; font-family: Inter, sans-serif; font-size: 16px; letter-spacing: -.015em; }
 .searchCard form { display: flex; gap: 14px; }
-.searchInput { display: flex; min-width: 0; height: 46px; flex: 1; align-items: center; gap: 12px; padding: 0 15px; border: 1px solid #d9e0eb; border-radius: 9px; color: #718096; background: #fff; }
+.searchInput { display: flex; min-width: 0; height: 42px; flex: 1; align-items: center; gap: 12px; padding: 0 15px; border: 1px solid #d9e0eb; border-radius: 9px; color: #718096; background: #fff; }
 .searchInput:focus-within { border-color: #6c7ff2; box-shadow: 0 0 0 3px rgb(79 70 229 / 10%); }
 .searchInput input { width: 100%; min-width: 0; border: 0; outline: 0; color: #202a3d; background: transparent; font: 400 14px Inter, sans-serif; }
 .searchInput input::placeholder { color: #8390a5; }
@@ -18,7 +18,7 @@
 .clarification strong { font-size: 13px; }
 .clarification p { margin-top: 3px; color: #778197; font-size: 12px; }
 .neutralSelect, .filterFields button { border: 1px solid #d7dde7; color: #263248; background: #fff !important; box-shadow: 0 1px 3px rgb(30 48 80 / 7%); }
-.neutralSelect { min-height: 46px; border-radius: var(--radius-small); }
+.neutralSelect { min-height: 42px; border-radius: var(--radius-small); }
 .neutralSelect, .clarificationSelectContent [data-slot="select-item"] { font-size: 13px; font-weight: 600; line-height: 1.2; }
 .neutralSelect:hover, .neutralSelect[data-state="open"], .filterFields button:hover, .filterFields button[data-state="open"] { color: #263248; background: #f9fafc !important; }
 .neutralSelect:focus, .neutralSelect:focus-visible, .filterFields button:focus-visible { border-color: #a8b2ec; color: #263248; background: #fff !important; box-shadow: 0 0 0 3px rgb(79 70 229 / 10%); }
@@ -68,7 +68,7 @@
 .supplierActions label { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 8px; color: #455167; font-size: 13px; line-height: 1.35; cursor: pointer; }
 .supplierActions label button { width: 16px; height: 16px; flex: 0 0 16px; padding: 0; background: #fff; }
 .supplierActions label button[data-state="checked"] { color: #fff; background: #4f46e5; }
-.supplierActions > button { width: fit-content; min-width: 158px; background: #4f46e5; }
+.supplierActions > button { width: 100%; min-width: 0; max-width: 100%; background: #4f46e5; }
 .mobileFilters { display: none; }
 .compareLimit { margin: 12px 0 0; padding: 9px 12px; border: 1px solid #e4d7a9; border-radius: 8px; color: #654f13; background: #fffaf0; font-size: 12px; font-weight: 500; line-height: 1.4; }
 .compareBar { position: sticky; z-index: 10; bottom: 16px; display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 18px; margin-top: 14px; padding: 11px 12px 11px 16px; border: 1px solid #d8dcf8; border-radius: 11px; background: rgb(255 255 255 / 96%); box-shadow: 0 8px 28px rgb(40 48 100 / 16%); backdrop-filter: blur(10px); }
@@ -104,7 +104,7 @@
   .searchCard { padding: 18px; }
   .searchCard h1 { font-size: 15px; }
   .searchCard form { flex-direction: column; }
-  .searchInput { min-height: 52px; height: 52px; padding-block: 12px; }
+  .searchInput { min-height: 42px; height: 42px; padding-block: 0; }
   .searchInput input { font-size: 16px; line-height: 1.4; }
   .searchCard form > button { width: 100%; }
   .clarification { grid-template-columns: 1fr; }
