@@ -35,7 +35,7 @@
 .resultsHeader p { margin-top: 5px; color: #465269; font-size: 12px; font-weight: 500; }
 .resultsHeader p span { color: #8a94a7; font-weight: 400; }
 .supplierList { display: grid; width: 100%; gap: 11px; }
-.supplierCard { display: grid; width: 100%; min-width: 0; grid-template-columns: minmax(190px, .9fr) 90px minmax(300px, 1.65fr) 176px; align-items: center; gap: 15px; padding: 19px; border: 1px solid #e4e8ef; border-radius: 12px; background: #fff; box-shadow: 0 2px 8px rgb(28 46 75 / 3.5%); }
+.supplierCard { display: grid; width: 100%; min-width: 0; grid-template-columns: minmax(190px, .9fr) 90px minmax(300px, 1.65fr) 206px; align-items: center; gap: 15px; padding: 19px; border: 1px solid #e4e8ef; border-radius: 12px; background: #fff; box-shadow: 0 2px 8px rgb(28 46 75 / 3.5%); }
 .supplierCardSelected { border-color: #8f91f3; box-shadow: 0 0 0 2px rgb(79 70 229 / 10%), 0 4px 12px rgb(79 70 229 / 8%); }
 .supplierIdentity { display: flex; min-width: 0; align-items: center; gap: 11px; }
 .supplierIcon { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 1px solid #dfe5ef; border-radius: 10px; color: #4f46e5; background: #f8f8ff; }
@@ -66,14 +66,15 @@
 .supplierActions label { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 8px; color: #455167; font-size: 13px; line-height: 1.35; cursor: pointer; }
 .supplierActions label button { width: 16px; height: 16px; flex: 0 0 16px; padding: 0; background: #fff; }
 .supplierActions label button[data-state="checked"] { color: #fff; background: #4f46e5; }
-.supplierActions > button { width: fit-content; min-width: 158px; height: 36px; padding: 0 13px; background: #4f46e5; font-size: 12px; }
+.supplierActions > button { width: fit-content; min-width: 158px; height: 36px; padding: 0 13px; background: #4f46e5; }
 .mobileFilters { display: none; }
-.compareLimit { margin: 12px 2px 0; padding: 9px 12px; border: 1px solid #e4d7a9; border-radius: 8px; color: #654f13; background: #fffaf0; font-size: 12px; font-weight: 500; line-height: 1.4; }
+.compareLimit { margin: 12px 0 0; padding: 9px 12px; border: 1px solid #e4d7a9; border-radius: 8px; color: #654f13; background: #fffaf0; font-size: 12px; font-weight: 500; line-height: 1.4; }
 .compareBar { position: sticky; z-index: 10; bottom: 16px; display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 18px; margin-top: 14px; padding: 11px 12px 11px 16px; border: 1px solid #d8dcf8; border-radius: 11px; background: rgb(255 255 255 / 96%); box-shadow: 0 8px 28px rgb(40 48 100 / 16%); backdrop-filter: blur(10px); }
 .compareBar div { display: grid; min-width: 0; gap: 2px; }
 .compareBar strong { color: #29324a; font-size: 13px; line-height: 1.3; }
 .compareBar span { color: #687386; font-size: 12px; line-height: 1.3; }
 .compareBar button { min-width: 132px; height: 40px; background: linear-gradient(135deg, #2563eb, #5746e8); }
+.supplierActions > button, .compareBar button { font-size: 14px; font-weight: 600; line-height: 1.2; }
 
 @media (max-width: 1160px) {
   .resultsLayout { grid-template-columns: 260px minmax(0, 1fr); }
@@ -109,7 +110,7 @@
   .clarification > button { width: 100%; }
   .resultsLayout { gap: 12px; margin-top: 16px; }
   .mobileFilters .filterFields { grid-template-columns: 1fr; }
-  .resultsCard { padding: 15px; }
+  .resultsCard { padding: 8px; }
   .supplierCard { display: flex; align-items: stretch; flex-direction: column; gap: 13px; padding: 16px; }
   .supplierIdentity { align-items: flex-start; }
   .matchBlock { display: grid; grid-template-columns: 1fr auto; align-items: center; text-align: left; }
@@ -121,9 +122,9 @@
   .criteria dd { font-size: 13px; }
   .supplierActions { display: grid; grid-template-columns: 1fr; align-items: stretch; gap: 14px; margin-top: 0; padding-top: 0; border-top: 0; }
   .supplierActions label { font-size: 13px; }
-  .supplierActions > button { width: 100%; height: 40px; font-size: 11px; }
-  .resultsCard:has(.compareBar) { padding-bottom: calc(15px + env(safe-area-inset-bottom)); }
-  .compareBar { bottom: max(8px, env(safe-area-inset-bottom)); gap: 10px; margin: 14px -7px 0; padding: 10px; border-radius: 10px; }
+  .supplierActions > button { width: 100%; height: 40px; }
+  .resultsCard:has(.compareBar) { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .compareBar { bottom: max(8px, env(safe-area-inset-bottom)); gap: 10px; margin: 14px 0 0; padding: 10px; border-radius: 10px; }
   .compareBar strong { font-size: 12px; }
   .compareBar span { font-size: 11px; }
   .compareBar button { min-width: 128px; min-height: 44px; padding-inline: 12px; }
