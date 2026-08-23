@@ -57,17 +57,19 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
   return <article className={styles.supplierCard}>
     <div className={styles.supplierIdentity}>
       <div className={styles.supplierIcon}><Box size={21} /></div>
-      <div><h3>{supplier.name}</h3><p><MapPin size={13} />{supplier.location}</p></div>
+      <div className={styles.supplierInfo}><h3>{supplier.name}</h3><p><MapPin size={13} />{supplier.location}</p><small>Оновлено: {supplier.updatedAt}</small></div>
     </div>
-    <div className={styles.matchBlock}><span>Match</span><strong>{score}%</strong><small>{supplier.breakdown}</small></div>
-    <dl className={styles.criteria}>
-      {supplier.criteria.map((criterion) => <div key={criterion.label}>
-        <dt>{criterion.label}</dt><dd>{criterion.value}</dd>
-        <CriterionStatusIcon status={criterion.status} />
-      </div>)}
-    </dl>
+    <div className={styles.matchBlock}><span>Match</span><strong>{score}%</strong></div>
+    <div className={styles.criteriaArea}>
+      <p className={styles.breakdown}>{supplier.breakdown}</p>
+      <dl className={styles.criteria}>
+        {supplier.criteria.map((criterion) => <div key={criterion.label}>
+          <dt>{criterion.label}</dt><dd>{criterion.value}</dd>
+          <CriterionStatusIcon status={criterion.status} />
+        </div>)}
+      </dl>
+    </div>
     <div className={styles.supplierActions}>
-      <p>Оновлено: {supplier.updatedAt}</p>
       <label htmlFor={checkboxId}><Checkbox id={checkboxId} /><span>Додати до порівняння</span></label>
       <Button type="button">Переглянути постачальника</Button>
     </div>
@@ -109,7 +111,7 @@ export function SupplierSearchPage() {
         <aside className={styles.filters}><div className={styles.filterTitle}><SlidersHorizontal size={17}/><h2>Фільтри</h2></div><Filters /></aside>
         <details className={styles.mobileFilters}><summary><span><SlidersHorizontal size={17}/>Фільтри</span><ChevronDown size={18}/></summary><Filters /></details>
         <div className={styles.resultsCard}>
-          <div className={styles.resultsHeader}><div><h2 id="search-results-title">Результати пошуку</h2><p>Кава · Україна <span>· Знайдено 3 постачальники</span></p></div><Select defaultValue="best"><SelectTrigger className={styles.sortSelect} aria-label="Сортування"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="best">Найкраще співпадіння</SelectItem><SelectItem value="new">Нещодавно оновлені</SelectItem></SelectContent></Select></div>
+          <div className={styles.resultsHeader}><h2 id="search-results-title">Результати пошуку</h2><p>Кава · Україна <span>· Знайдено 3 постачальники</span></p></div>
           <div className={styles.supplierList}>{suppliers.map(supplier => <SupplierCard key={supplier.name} supplier={supplier} />)}</div>
         </div>
       </section>}
