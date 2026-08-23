@@ -1,17 +1,18 @@
 import '../../styles/shadcn.css';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { Box, Check, ChevronDown, CircleHelp, MapPin, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
+import { CompareScreen } from '../CompareScreen/CompareScreen';
 
 type SearchStage = 'idle' | 'loading' | 'clarification' | 'search-ready';
-type CriterionStatus = 'Відповідає' | 'Частково відповідає' | 'Не відповідає' | 'Немає даних';
+export type CriterionStatus = 'Відповідає' | 'Частково відповідає' | 'Не відповідає' | 'Немає даних';
 
-type Supplier = {
+export type Supplier = {
   name: string;
   location: string;
   match: string;
@@ -20,7 +21,7 @@ type Supplier = {
   criteria: { label: string; value: string; status: CriterionStatus }[];
 };
 
-const suppliers: Supplier[] = [
+export const suppliers: Supplier[] = [
   { name: 'Coffee Trade Ukraine', location: 'Київ, Україна', match: '92% Match', breakdown: '3 критерії відповідають · 1 частково', updatedAt: '12 серпня 2026', criteria: [
     { label: 'Товар', value: 'кава та кавова продукція', status: 'Відповідає' }, { label: 'Регіон доставки', value: 'Україна', status: 'Відповідає' }, { label: 'MOQ', value: 'від 10 кг', status: 'Відповідає' }, { label: 'Ціна', value: 'від 320 грн/кг', status: 'Частково відповідає' },
   ] },
@@ -35,7 +36,7 @@ const suppliers: Supplier[] = [
   ] },
 ];
 
-function CriterionStatusIcon({ status }: { status: CriterionStatus }) {
+export function CriterionStatusIcon({ status }: { status: CriterionStatus }) {
   if (status === 'Відповідає') {
     return <span aria-label={status} className={cn(styles.statusIcon, styles.success)} data-tooltip={status} role="img" tabIndex={0}><Check aria-hidden="true" /></span>;
   }
@@ -91,6 +92,8 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
 function isSpecificRequest(query: string) { return query.trim().length >= 25 && query.trim().split(/\s+/).length >= 5; }
 
 export function SupplierSearchPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [query, setQuery] = useState('');
   const [stage, setStage] = useState<SearchStage>('idle');
   const [deliveryRegion, setDeliveryRegion] = useState('');
@@ -116,6 +119,20 @@ export function SupplierSearchPage() {
     }
     setSelectedSuppliers(current => [...current, supplierName]);
     setShowCompareLimit(false);
+  }
+
+  function removeComparedSupplier(supplierName: string) {
+    const remaining = selectedSuppliers.filter(name => name !== supplierName);
+    setSelectedSuppliers(remaining);
+    if (remaining.length < 2) navigate('/app');
+  }
+
+  const comparedSuppliers = selectedSuppliers
+    .map(name => suppliers.find(supplier => supplier.name === name))
+    .filter((supplier): supplier is Supplier => Boolean(supplier));
+
+  if (location.pathname === '/app/compare' && comparedSuppliers.length >= 2) {
+    return <CompareScreen suppliers={comparedSuppliers} onBack={() => navigate('/app')} onRemove={removeComparedSupplier} />;
   }
 
   return <div className={cn('shadcn', styles.page)}>
@@ -145,7 +162,7 @@ export function SupplierSearchPage() {
           {showCompareLimit && <p className={styles.compareLimit} role="status">Для порівняння можна обрати до 3 постачальників</p>}
           {selectedSuppliers.length >= 2 && <div className={styles.compareBar} aria-label={`Обрано постачальників: ${selectedSuppliers.length}`}>
             <div><strong>Обрано для порівняння</strong><span>{selectedSuppliers.length} з 3 постачальників</span></div>
-            <Button type="button" aria-label={`Порівняти ${selectedSuppliers.length} постачальників`} onClick={() => undefined}>Порівняти ({selectedSuppliers.length})</Button>
+            <Button type="button" aria-label={`Порівняти ${selectedSuppliers.length} постачальників`} onClick={() => navigate('/app/compare')}>Порівняти ({selectedSuppliers.length})</Button>
           </div>}
         </div>
       </section>}
