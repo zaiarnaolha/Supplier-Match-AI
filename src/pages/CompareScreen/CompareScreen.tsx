@@ -19,10 +19,6 @@ function scoreOf(supplier: Supplier) {
   return `${supplier.match.split('%')[0]}%`;
 }
 
-function shortName(name: string) {
-  return name.split(' ').slice(0, 2).join(' ');
-}
-
 function SupplierHeading({ supplier, onRemove, compact = false }: { supplier: Supplier; onRemove: () => void; compact?: boolean }) {
   return <div className={cn(styles.supplierHeading, compact && styles.compactHeading)}>
     <button className={styles.removeButton} type="button" onClick={onRemove} aria-label={`Прибрати ${supplier.name} з порівняння`} title="Прибрати з порівняння"><X aria-hidden="true" /></button>
@@ -83,7 +79,7 @@ export function CompareScreen({ selectedSupplierNames, setSelectedSupplierNames 
           </div>)}
           <div className={styles.actionsRow}>
             <div aria-hidden="true" />
-            {selectedSuppliers.map(supplier => <Button type="button" key={supplier.name}>Переглянути постачальника</Button>)}
+            {selectedSuppliers.map(supplier => <Button type="button" key={supplier.name}>Переглянути</Button>)}
           </div>
         </div>
       </section>
@@ -116,8 +112,8 @@ export function CompareScreen({ selectedSupplierNames, setSelectedSupplierNames 
           </div>)}
         </div>
         <div className={styles.mobileActions}>
-          <Button type="button">Переглянути {shortName(firstMobileSupplier.name)}</Button>
-          <Button type="button">Переглянути {shortName(secondMobileSupplier.name)}</Button>
+          <Button type="button">Переглянути</Button>
+          <Button type="button">Переглянути</Button>
         </div>
       </section>}
     </main>

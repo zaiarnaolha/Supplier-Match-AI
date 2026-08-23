@@ -2,6 +2,7 @@ import '../../styles/shadcn.css';
 import { useEffect, useRef, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
@@ -83,7 +84,7 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
     </div>
     <div className={styles.supplierActions}>
       <label htmlFor={checkboxId}><Checkbox id={checkboxId} checked={isSelected} onCheckedChange={(checked: boolean | 'indeterminate') => onCompareChange(supplier.name, checked === true)} /><span>Додати до порівняння</span></label>
-      <Button type="button">Переглянути постачальника</Button>
+      <Button type="button">Переглянути</Button>
     </div>
   </article>;
 }
@@ -135,7 +136,7 @@ export function SupplierSearchPage({ query, setQuery, stage, setStage, deliveryR
       <section className={styles.searchCard} id="search">
         <h1>Опишіть, що вам потрібно знайти</h1>
         <form onSubmit={handleSubmit}>
-          <div className={styles.searchInput}><Search size={20} /><input aria-label="Опишіть потребу в постачальнику" placeholder="Наприклад: шукаю постачальника бакалії з доставкою до Коломиї" value={query} onChange={e => setQuery(e.target.value)} disabled={stage === 'loading' || stage === 'search-ready'} /></div>
+          <div className={styles.searchInput}><Search size={20} /><Input className="pl-10" aria-label="Опишіть потребу в постачальнику" placeholder="Наприклад: шукаю постачальника бакалії з доставкою до Коломиї" value={query} onChange={e => setQuery(e.target.value)} disabled={stage === 'loading' || stage === 'search-ready'} /></div>
           {(stage === 'idle' || stage === 'loading') && <Button type="submit" disabled={!query.trim() || stage === 'loading'}><Sparkles size={16} />{stage === 'loading' ? 'Аналізуємо запит…' : 'Знайти постачальників'}</Button>}
         </form>
         {stage === 'clarification' && <div className={styles.clarification}>
