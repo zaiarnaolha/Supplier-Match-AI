@@ -74,7 +74,7 @@
 .compareBar strong { color: #29324a; font-size: 13px; line-height: 1.3; }
 .compareBar span { color: #687386; font-size: 12px; line-height: 1.3; }
 .compareBar button { min-width: 132px; height: 40px; background: linear-gradient(135deg, #2563eb, #5746e8); }
-.supplierActions > button, .compareBar button { font-size: 14px; font-weight: 600; line-height: 1.2; }
+.supplierActions > button, .compareBar button { font-size: 13px; font-weight: 600; line-height: 1.2; }
 
 @media (max-width: 1160px) {
   .resultsLayout { grid-template-columns: 260px minmax(0, 1fr); }

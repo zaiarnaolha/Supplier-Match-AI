@@ -32,7 +32,7 @@
 .valueCell > span { min-width: 0; }
 .valueCell > span + span { flex: 0 0 18px; margin-top: 1px; }
 .actionsRow > div, .actionsRow > button { margin: 18px; }
-.actionsRow > button { min-width: 0; min-height: 40px; padding-inline: 10px; background: #4f46e5; font-size: 12px; white-space: normal; }
+.actionsRow > button { min-width: 0; min-height: 40px; padding-inline: 10px; background: #4f46e5; font-size: 13px; white-space: normal; }
 .mobileComparison { display: none; }
 
 @media (max-width: 900px) {
