@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { Box, Check, ChevronDown, CircleHelp, MapPin, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Box, Check, ChevronDown, CircleHelp, MapPin, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
 
 type SearchStage = 'idle' | 'loading' | 'clarification' | 'search-ready';
-type CriterionStatus = 'Відповідає' | 'Частково відповідає' | 'Немає даних';
+type CriterionStatus = 'Відповідає' | 'Частково відповідає' | 'Не відповідає' | 'Немає даних';
 
 type Supplier = {
   name: string;
@@ -30,16 +30,22 @@ const suppliers: Supplier[] = [
   { name: 'Roast Partners', location: 'Краків, Польща', match: '64% Match', breakdown: '2 критерії відповідають · 2 без даних', updatedAt: '28 липня 2026', criteria: [
     { label: 'Товар', value: 'кава та обсмажене зерно', status: 'Відповідає' }, { label: 'Регіон доставки', value: 'Україна', status: 'Відповідає' }, { label: 'MOQ', value: 'Не вказано', status: 'Немає даних' }, { label: 'Ціна', value: 'Не вказано', status: 'Немає даних' },
   ] },
+  { name: 'Nordic Coffee Supply', location: 'Варшава, Польща', match: '71% Match', breakdown: '2 критерії відповідають · 1 частково · 1 не відповідає', updatedAt: '20 серпня 2026', criteria: [
+    { label: 'Товар', value: 'кава в зернах', status: 'Відповідає' }, { label: 'Регіон доставки', value: 'Україна', status: 'Відповідає' }, { label: 'MOQ', value: 'від 100 кг', status: 'Частково відповідає' }, { label: 'Ціна', value: 'від 410 грн/кг', status: 'Не відповідає' },
+  ] },
 ];
 
 function CriterionStatusIcon({ status }: { status: CriterionStatus }) {
   if (status === 'Відповідає') {
-    return <span aria-label={status} className={cn(styles.statusIcon, styles.success)} role="img" tabIndex={0} title={status}><Check aria-hidden="true" /></span>;
+    return <span aria-label={status} className={cn(styles.statusIcon, styles.success)} data-tooltip={status} role="img" tabIndex={0}><Check aria-hidden="true" /></span>;
   }
   if (status === 'Частково відповідає') {
-    return <span aria-label={status} className={cn(styles.statusIcon, styles.partial)} role="img" tabIndex={0} title={status}><span aria-hidden="true" /></span>;
+    return <span aria-label={status} className={cn(styles.statusIcon, styles.partial)} data-tooltip={status} role="img" tabIndex={0}><span aria-hidden="true">~</span></span>;
   }
-  return <span aria-label={status} className={cn(styles.statusIcon, styles.unknown)} role="img" tabIndex={0} title={status}><CircleHelp aria-hidden="true" /></span>;
+  if (status === 'Не відповідає') {
+    return <span aria-label={status} className={cn(styles.statusIcon, styles.failure)} data-tooltip={status} role="img" tabIndex={0}><X aria-hidden="true" /></span>;
+  }
+  return <span aria-label={status} className={cn(styles.statusIcon, styles.unknown)} data-tooltip={status} role="img" tabIndex={0}><CircleHelp aria-hidden="true" /></span>;
 }
 
 function Filters() {
@@ -51,10 +57,16 @@ function Filters() {
   </div>;
 }
 
-function SupplierCard({ supplier }: { supplier: Supplier }) {
+type SupplierCardProps = {
+  supplier: Supplier;
+  isSelected: boolean;
+  onCompareChange: (supplierName: string, shouldSelect: boolean) => void;
+};
+
+function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardProps) {
   const checkboxId = `compare-${supplier.name.toLowerCase().replace(/\s+/g, '-')}`;
   const score = supplier.match.split('%')[0];
-  return <article className={styles.supplierCard}>
+  return <article className={cn(styles.supplierCard, isSelected && styles.supplierCardSelected)}>
     <div className={styles.supplierIdentity}>
       <div className={styles.supplierIcon}><Box size={21} /></div>
       <div className={styles.supplierInfo}><h3>{supplier.name}</h3><p><MapPin size={13} />{supplier.location}</p><small>Оновлено: {supplier.updatedAt}</small></div>
@@ -70,7 +82,7 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
       </dl>
     </div>
     <div className={styles.supplierActions}>
-      <label htmlFor={checkboxId}><Checkbox id={checkboxId} /><span>Додати до порівняння</span></label>
+      <label htmlFor={checkboxId}><Checkbox id={checkboxId} checked={isSelected} onCheckedChange={(checked: boolean | 'indeterminate') => onCompareChange(supplier.name, checked === true)} /><span>Додати до порівняння</span></label>
       <Button type="button">Переглянути постачальника</Button>
     </div>
   </article>;
@@ -82,11 +94,28 @@ export function SupplierSearchPage() {
   const [query, setQuery] = useState('');
   const [stage, setStage] = useState<SearchStage>('idle');
   const [deliveryRegion, setDeliveryRegion] = useState('');
+  const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
+  const [showCompareLimit, setShowCompareLimit] = useState(false);
   const loadingTimer = useRef<number | null>(null);
   useEffect(() => () => { if (loadingTimer.current !== null) window.clearTimeout(loadingTimer.current); }, []);
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!query.trim() || stage === 'loading') return;
     setStage('loading'); loadingTimer.current = window.setTimeout(() => { setStage(isSpecificRequest(query) ? 'search-ready' : 'clarification'); loadingTimer.current = null; }, 700);
+  }
+  function handleCompareChange(supplierName: string, shouldSelect: boolean) {
+    if (!shouldSelect) {
+      setSelectedSuppliers(current => current.filter(name => name !== supplierName));
+      setShowCompareLimit(false);
+      return;
+    }
+
+    if (selectedSuppliers.includes(supplierName)) return;
+    if (selectedSuppliers.length >= 3) {
+      setShowCompareLimit(true);
+      return;
+    }
+    setSelectedSuppliers(current => [...current, supplierName]);
+    setShowCompareLimit(false);
   }
 
   return <div className={cn('shadcn', styles.page)}>
@@ -112,7 +141,12 @@ export function SupplierSearchPage() {
         <details className={styles.mobileFilters}><summary><span><SlidersHorizontal size={17}/>Фільтри</span><ChevronDown size={18}/></summary><Filters /></details>
         <div className={styles.resultsCard}>
           <div className={styles.resultsHeader}><h2 id="search-results-title">Результати пошуку</h2><p>Кава · Україна <span>· Знайдено 3 постачальники</span></p></div>
-          <div className={styles.supplierList}>{suppliers.map(supplier => <SupplierCard key={supplier.name} supplier={supplier} />)}</div>
+          <div className={styles.supplierList}>{suppliers.map(supplier => <SupplierCard key={supplier.name} supplier={supplier} isSelected={selectedSuppliers.includes(supplier.name)} onCompareChange={handleCompareChange} />)}</div>
+          {showCompareLimit && <p className={styles.compareLimit} role="status">Для порівняння можна обрати до 3 постачальників</p>}
+          {selectedSuppliers.length >= 2 && <div className={styles.compareBar} aria-label={`Обрано постачальників: ${selectedSuppliers.length}`}>
+            <div><strong>Обрано для порівняння</strong><span>{selectedSuppliers.length} з 3 постачальників</span></div>
+            <Button type="button" aria-label={`Порівняти ${selectedSuppliers.length} постачальників`} onClick={() => undefined}>Порівняти ({selectedSuppliers.length})</Button>
+          </div>}
         </div>
       </section>}
     </main>

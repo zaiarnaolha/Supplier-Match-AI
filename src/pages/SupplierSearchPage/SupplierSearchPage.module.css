@@ -36,6 +36,7 @@
 .resultsHeader p span { color: #8a94a7; font-weight: 400; }
 .supplierList { display: grid; gap: 11px; }
 .supplierCard { display: grid; min-width: 0; grid-template-columns: minmax(190px, .9fr) 90px minmax(300px, 1.65fr) 176px; align-items: center; gap: 15px; padding: 19px; border: 1px solid #e4e8ef; border-radius: 12px; background: #fff; box-shadow: 0 2px 8px rgb(28 46 75 / 3.5%); }
+.supplierCardSelected { border-color: #8f91f3; box-shadow: 0 0 0 2px rgb(79 70 229 / 10%), 0 4px 12px rgb(79 70 229 / 8%); }
 .supplierIdentity { display: flex; min-width: 0; align-items: center; gap: 11px; }
 .supplierIcon { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 1px solid #dfe5ef; border-radius: 10px; color: #4f46e5; background: #f8f8ff; }
 .supplierIdentity h3 { overflow-wrap: anywhere; font-family: Inter, sans-serif; font-size: 16px; font-weight: 600; line-height: 1.3; letter-spacing: -.015em; }
@@ -51,12 +52,15 @@
 .criteria > div:last-child { border-bottom: 0; }
 .criteria dt { color: #758196; font-size: 12px; line-height: 1.35; }
 .criteria dd { min-width: 0; color: #263248; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
-.statusIcon { display: inline-grid; width: 18px; height: 18px; place-items: center; justify-self: end; border-radius: 50%; cursor: help; }
+.statusIcon { position: relative; display: inline-grid; width: 18px; height: 18px; place-items: center; justify-self: end; border-radius: 50%; cursor: help; }
 .statusIcon:focus-visible { outline: 2px solid #7c74f2; outline-offset: 2px; }
+.statusIcon::after { position: absolute; z-index: 20; right: 0; bottom: calc(100% + 7px); padding: 5px 7px; border-radius: 5px; color: #fff; background: #283142; box-shadow: 0 3px 10px rgb(20 28 45 / 18%); content: attr(data-tooltip); font-size: 11px; font-weight: 500; line-height: 1.2; white-space: nowrap; opacity: 0; pointer-events: none; transform: translateY(2px); transition: opacity 120ms ease, transform 120ms ease; }
+.statusIcon:hover::after, .statusIcon:focus-visible::after { opacity: 1; transform: translateY(0); }
 .statusIcon svg { width: 13px; height: 13px; stroke-width: 2.5; }
 .statusIcon.success { color: #16804b; background: #e9f8f0; }
-.statusIcon.partial { border: 1px solid #e9a636; background: #fff8e9; }
-.statusIcon.partial > span { width: 10px; height: 10px; border: 1px solid #d98b18; border-radius: 50%; background: linear-gradient(90deg, #e29420 50%, transparent 50%); }
+.statusIcon.partial { color: #c97912; background: #fff3dc; }
+.statusIcon.partial > span { font-size: 15px; font-weight: 700; line-height: 1; transform: translateY(-1px); }
+.statusIcon.failure { color: #c73737; background: #fdecec; }
 .statusIcon.unknown { color: #687386; background: #f0f2f5; }
 .supplierActions { display: grid; min-width: 0; gap: 12px; }
 .supplierActions label { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 8px; color: #455167; font-size: 13px; line-height: 1.35; cursor: pointer; }
@@ -64,6 +68,12 @@
 .supplierActions label button[data-state="checked"] { color: #fff; background: #4f46e5; }
 .supplierActions > button { width: fit-content; min-width: 158px; height: 36px; padding: 0 13px; background: #4f46e5; font-size: 12px; }
 .mobileFilters { display: none; }
+.compareLimit { margin: 12px 2px 0; padding: 9px 12px; border: 1px solid #e4d7a9; border-radius: 8px; color: #654f13; background: #fffaf0; font-size: 12px; font-weight: 500; line-height: 1.4; }
+.compareBar { position: sticky; z-index: 10; bottom: 16px; display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 18px; margin-top: 14px; padding: 11px 12px 11px 16px; border: 1px solid #d8dcf8; border-radius: 11px; background: rgb(255 255 255 / 96%); box-shadow: 0 8px 28px rgb(40 48 100 / 16%); backdrop-filter: blur(10px); }
+.compareBar div { display: grid; min-width: 0; gap: 2px; }
+.compareBar strong { color: #29324a; font-size: 13px; line-height: 1.3; }
+.compareBar span { color: #687386; font-size: 12px; line-height: 1.3; }
+.compareBar button { min-width: 132px; height: 40px; background: linear-gradient(135deg, #2563eb, #5746e8); }
 
 @media (max-width: 1160px) {
   .resultsLayout { grid-template-columns: 260px minmax(0, 1fr); }
@@ -112,6 +122,11 @@
   .supplierActions { display: grid; grid-template-columns: 1fr; align-items: stretch; gap: 14px; margin-top: 0; padding-top: 0; border-top: 0; }
   .supplierActions label { font-size: 13px; }
   .supplierActions > button { width: 100%; height: 40px; font-size: 11px; }
+  .resultsCard:has(.compareBar) { padding-bottom: calc(15px + env(safe-area-inset-bottom)); }
+  .compareBar { bottom: max(8px, env(safe-area-inset-bottom)); gap: 10px; margin: 14px -7px 0; padding: 10px; border-radius: 10px; }
+  .compareBar strong { font-size: 12px; }
+  .compareBar span { font-size: 11px; }
+  .compareBar button { min-width: 128px; min-height: 44px; padding-inline: 12px; }
 }
 
 @media (max-width: 390px) {
