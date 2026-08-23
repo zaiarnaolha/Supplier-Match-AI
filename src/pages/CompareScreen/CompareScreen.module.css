@@ -50,10 +50,13 @@
   .comparisonCard { padding: 15px; }
   .desktopMatrix { display: none; }
   .mobileComparison { display: block; }
-  .mobilePicker { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 7px; margin-bottom: 14px; }
-  .mobilePicker > strong { min-width: 0; color: #39445a; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
-  .mobilePicker > span { color: #98a1b2; font-size: 10px; font-weight: 600; }
-  .mobilePicker button { width: 100%; min-width: 0; height: 38px; padding-inline: 9px; border: 1px solid #d7dde7; color: #263248; background: #fff !important; font-size: 11px; }
+  .mobilePicker { display: grid; min-width: 0; gap: 12px; margin-bottom: 16px; }
+  .mobilePicker > div { display: grid; min-width: 0; gap: 6px; }
+  .mobilePicker > div > span { color: #59657a; font-size: 11px; font-weight: 600; line-height: 1.35; }
+  .mobilePicker button { width: 100%; min-width: 0; height: 44px; padding-inline: 12px; border: 1px solid #d7dde7; color: #263248; background: #fff !important; font-size: 12px; }
+  .mobilePicker button:hover, .mobilePicker button[data-state="open"] { color: #263248; background: #f9fafc !important; }
+  .mobilePicker button:focus-visible { border-color: #a8b2ec; box-shadow: 0 0 0 3px rgb(79 70 229 / 10%); }
+  .mobilePicker button svg { color: #667085; opacity: 1; }
   .mobileSupplierHeaders, .mobileColumns { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mobileSupplierHeaders { overflow: hidden; border: 1px solid #e5e8ef; border-radius: 10px 10px 0 0; background: #fafbfe; }
   .mobileSupplierHeaders article { position: relative; min-width: 0; padding: 13px 28px 13px 11px; }

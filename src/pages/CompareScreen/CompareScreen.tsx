@@ -17,17 +17,20 @@ type CompareScreenProps = {
 const criterionLabels = ['Товар', 'Регіон доставки', 'MOQ', 'Ціна'];
 
 export function CompareScreen({ suppliers, onBack, onRemove }: CompareScreenProps) {
-  const primarySupplier = suppliers[0];
-  const alternateSuppliers = suppliers.slice(1);
-  const [secondarySupplierName, setSecondarySupplierName] = useState(alternateSuppliers[0].name);
-  const secondarySupplier = alternateSuppliers.find(supplier => supplier.name === secondarySupplierName) ?? alternateSuppliers[0];
-  const mobileSuppliers = [primarySupplier, secondarySupplier];
+  const [firstSupplierName, setFirstSupplierName] = useState(suppliers[0].name);
+  const [secondSupplierName, setSecondSupplierName] = useState(suppliers[1].name);
+  const firstSupplier = suppliers.find(supplier => supplier.name === firstSupplierName)
+    ?? suppliers.find(supplier => supplier.name !== secondSupplierName)
+    ?? suppliers[0];
+  const secondSupplier = suppliers.find(supplier => supplier.name === secondSupplierName && supplier.name !== firstSupplier.name)
+    ?? suppliers.find(supplier => supplier.name !== firstSupplier.name)
+    ?? suppliers[1];
+  const mobileSuppliers = [firstSupplier, secondSupplier];
 
   useEffect(() => {
-    if (!alternateSuppliers.some(supplier => supplier.name === secondarySupplierName)) {
-      setSecondarySupplierName(alternateSuppliers[0].name);
-    }
-  }, [alternateSuppliers, secondarySupplierName]);
+    if (firstSupplierName !== firstSupplier.name) setFirstSupplierName(firstSupplier.name);
+    if (secondSupplierName !== secondSupplier.name) setSecondSupplierName(secondSupplier.name);
+  }, [firstSupplier.name, firstSupplierName, secondSupplier.name, secondSupplierName]);
 
   return <div className={cn('shadcn', styles.page)}>
     <header className={styles.siteHeader}><div className={styles.headerInner}>
@@ -65,11 +68,14 @@ export function CompareScreen({ suppliers, onBack, onRemove }: CompareScreenProp
 
         <div className={styles.mobileComparison}>
           <div className={styles.mobilePicker}>
-            <strong>{primarySupplier.name}</strong><span>vs</span>
-            <Select value={secondarySupplier.name} onValueChange={setSecondarySupplierName}>
-              <SelectTrigger aria-label="Другий постачальник для порівняння"><SelectValue /></SelectTrigger>
-              <SelectContent>{alternateSuppliers.map(supplier => <SelectItem key={supplier.name} value={supplier.name}>{supplier.name}</SelectItem>)}</SelectContent>
-            </Select>
+            <div><span>Постачальник 1</span><Select value={firstSupplier.name} onValueChange={setFirstSupplierName}>
+              <SelectTrigger aria-label="Постачальник 1"><SelectValue /></SelectTrigger>
+              <SelectContent>{suppliers.filter(supplier => supplier.name !== secondSupplier.name).map(supplier => <SelectItem key={supplier.name} value={supplier.name}>{supplier.name}</SelectItem>)}</SelectContent>
+            </Select></div>
+            <div><span>Постачальник 2</span><Select value={secondSupplier.name} onValueChange={setSecondSupplierName}>
+              <SelectTrigger aria-label="Постачальник 2"><SelectValue /></SelectTrigger>
+              <SelectContent>{suppliers.filter(supplier => supplier.name !== firstSupplier.name).map(supplier => <SelectItem key={supplier.name} value={supplier.name}>{supplier.name}</SelectItem>)}</SelectContent>
+            </Select></div>
           </div>
           <div className={styles.mobileSupplierHeaders}>{mobileSuppliers.map(supplier => <MobileSupplierHeader key={supplier.name} supplier={supplier} onRemove={onRemove} />)}</div>
           <div className={styles.mobileMatrix}>
