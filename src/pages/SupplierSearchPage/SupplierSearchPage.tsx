@@ -51,10 +51,16 @@ function Filters() {
   </div>;
 }
 
-function SupplierCard({ supplier }: { supplier: Supplier }) {
+type SupplierCardProps = {
+  supplier: Supplier;
+  isSelected: boolean;
+  onCompareChange: (supplierName: string, shouldSelect: boolean) => void;
+};
+
+function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardProps) {
   const checkboxId = `compare-${supplier.name.toLowerCase().replace(/\s+/g, '-')}`;
   const score = supplier.match.split('%')[0];
-  return <article className={styles.supplierCard}>
+  return <article className={cn(styles.supplierCard, isSelected && styles.supplierCardSelected)}>
     <div className={styles.supplierIdentity}>
       <div className={styles.supplierIcon}><Box size={21} /></div>
       <div className={styles.supplierInfo}><h3>{supplier.name}</h3><p><MapPin size={13} />{supplier.location}</p><small>Оновлено: {supplier.updatedAt}</small></div>
@@ -70,7 +76,7 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
       </dl>
     </div>
     <div className={styles.supplierActions}>
-      <label htmlFor={checkboxId}><Checkbox id={checkboxId} /><span>Додати до порівняння</span></label>
+      <label htmlFor={checkboxId}><Checkbox id={checkboxId} checked={isSelected} onCheckedChange={(checked: boolean | 'indeterminate') => onCompareChange(supplier.name, checked === true)} /><span>Додати до порівняння</span></label>
       <Button type="button">Переглянути постачальника</Button>
     </div>
   </article>;
@@ -82,11 +88,28 @@ export function SupplierSearchPage() {
   const [query, setQuery] = useState('');
   const [stage, setStage] = useState<SearchStage>('idle');
   const [deliveryRegion, setDeliveryRegion] = useState('');
+  const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
+  const [showCompareLimit, setShowCompareLimit] = useState(false);
   const loadingTimer = useRef<number | null>(null);
   useEffect(() => () => { if (loadingTimer.current !== null) window.clearTimeout(loadingTimer.current); }, []);
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!query.trim() || stage === 'loading') return;
     setStage('loading'); loadingTimer.current = window.setTimeout(() => { setStage(isSpecificRequest(query) ? 'search-ready' : 'clarification'); loadingTimer.current = null; }, 700);
+  }
+  function handleCompareChange(supplierName: string, shouldSelect: boolean) {
+    if (!shouldSelect) {
+      setSelectedSuppliers(current => current.filter(name => name !== supplierName));
+      setShowCompareLimit(false);
+      return;
+    }
+
+    if (selectedSuppliers.includes(supplierName)) return;
+    if (selectedSuppliers.length >= 3) {
+      setShowCompareLimit(true);
+      return;
+    }
+    setSelectedSuppliers(current => [...current, supplierName]);
+    setShowCompareLimit(false);
   }
 
   return <div className={cn('shadcn', styles.page)}>
@@ -112,7 +135,12 @@ export function SupplierSearchPage() {
         <details className={styles.mobileFilters}><summary><span><SlidersHorizontal size={17}/>Фільтри</span><ChevronDown size={18}/></summary><Filters /></details>
         <div className={styles.resultsCard}>
           <div className={styles.resultsHeader}><h2 id="search-results-title">Результати пошуку</h2><p>Кава · Україна <span>· Знайдено 3 постачальники</span></p></div>
-          <div className={styles.supplierList}>{suppliers.map(supplier => <SupplierCard key={supplier.name} supplier={supplier} />)}</div>
+          <div className={styles.supplierList}>{suppliers.map(supplier => <SupplierCard key={supplier.name} supplier={supplier} isSelected={selectedSuppliers.includes(supplier.name)} onCompareChange={handleCompareChange} />)}</div>
+          {showCompareLimit && <p className={styles.compareLimit} role="status">Для порівняння можна обрати до 3 постачальників</p>}
+          {selectedSuppliers.length >= 2 && <div className={styles.compareBar} aria-label={`Обрано постачальників: ${selectedSuppliers.length}`}>
+            <div><strong>Обрано для порівняння</strong><span>{selectedSuppliers.length} з 3 постачальників</span></div>
+            <Button type="button" aria-label={`Порівняти ${selectedSuppliers.length} постачальників`} onClick={() => undefined}>Порівняти ({selectedSuppliers.length})</Button>
+          </div>}
         </div>
       </section>}
     </main>
