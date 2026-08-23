@@ -58,6 +58,7 @@
 .statusIcon.success { color: #16804b; background: #e9f8f0; }
 .statusIcon.partial { border: 1px solid #e9a636; background: #fff8e9; }
 .statusIcon.partial > span { width: 10px; height: 10px; border: 1px solid #d98b18; border-radius: 50%; background: linear-gradient(90deg, #e29420 50%, transparent 50%); }
+.statusIcon.failure { color: #c73737; background: #fdecec; }
 .statusIcon.unknown { color: #687386; background: #f0f2f5; }
 .supplierActions { display: grid; min-width: 0; gap: 12px; }
 .supplierActions label { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 8px; color: #455167; font-size: 13px; line-height: 1.35; cursor: pointer; }

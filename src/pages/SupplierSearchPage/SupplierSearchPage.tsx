@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { Box, Check, ChevronDown, CircleHelp, MapPin, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Box, Check, ChevronDown, CircleHelp, MapPin, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
 
 type SearchStage = 'idle' | 'loading' | 'clarification' | 'search-ready';
-type CriterionStatus = 'Відповідає' | 'Частково відповідає' | 'Немає даних';
+type CriterionStatus = 'Відповідає' | 'Частково відповідає' | 'Не відповідає' | 'Немає даних';
 
 type Supplier = {
   name: string;
@@ -30,6 +30,9 @@ const suppliers: Supplier[] = [
   { name: 'Roast Partners', location: 'Краків, Польща', match: '64% Match', breakdown: '2 критерії відповідають · 2 без даних', updatedAt: '28 липня 2026', criteria: [
     { label: 'Товар', value: 'кава та обсмажене зерно', status: 'Відповідає' }, { label: 'Регіон доставки', value: 'Україна', status: 'Відповідає' }, { label: 'MOQ', value: 'Не вказано', status: 'Немає даних' }, { label: 'Ціна', value: 'Не вказано', status: 'Немає даних' },
   ] },
+  { name: 'Nordic Coffee Supply', location: 'Варшава, Польща', match: '71% Match', breakdown: '2 критерії відповідають · 1 частково · 1 не відповідає', updatedAt: '20 серпня 2026', criteria: [
+    { label: 'Товар', value: 'кава в зернах', status: 'Відповідає' }, { label: 'Регіон доставки', value: 'Україна', status: 'Відповідає' }, { label: 'MOQ', value: 'від 100 кг', status: 'Частково відповідає' }, { label: 'Ціна', value: 'від 410 грн/кг', status: 'Не відповідає' },
+  ] },
 ];
 
 function CriterionStatusIcon({ status }: { status: CriterionStatus }) {
@@ -38,6 +41,9 @@ function CriterionStatusIcon({ status }: { status: CriterionStatus }) {
   }
   if (status === 'Частково відповідає') {
     return <span aria-label={status} className={cn(styles.statusIcon, styles.partial)} role="img" tabIndex={0} title={status}><span aria-hidden="true" /></span>;
+  }
+  if (status === 'Не відповідає') {
+    return <span aria-label={status} className={cn(styles.statusIcon, styles.failure)} role="img" tabIndex={0} title={status}><X aria-hidden="true" /></span>;
   }
   return <span aria-label={status} className={cn(styles.statusIcon, styles.unknown)} role="img" tabIndex={0} title={status}><CircleHelp aria-hidden="true" /></span>;
 }
