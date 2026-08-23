@@ -1,6 +1,6 @@
 import '../../styles/shadcn.css';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, type Dispatch, type FormEvent, type SetStateAction } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,10 +8,10 @@ import { cn } from '@/lib/utils';
 import { Box, Check, ChevronDown, CircleHelp, MapPin, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
 
-type SearchStage = 'idle' | 'loading' | 'clarification' | 'search-ready';
-type CriterionStatus = 'Відповідає' | 'Частково відповідає' | 'Не відповідає' | 'Немає даних';
+export type SearchStage = 'idle' | 'loading' | 'clarification' | 'search-ready';
+export type CriterionStatus = 'Відповідає' | 'Частково відповідає' | 'Не відповідає' | 'Немає даних';
 
-type Supplier = {
+export type Supplier = {
   name: string;
   location: string;
   match: string;
@@ -20,7 +20,7 @@ type Supplier = {
   criteria: { label: string; value: string; status: CriterionStatus }[];
 };
 
-const suppliers: Supplier[] = [
+export const suppliers: Supplier[] = [
   { name: 'Coffee Trade Ukraine', location: 'Київ, Україна', match: '92% Match', breakdown: '3 критерії відповідають · 1 частково', updatedAt: '12 серпня 2026', criteria: [
     { label: 'Товар', value: 'кава та кавова продукція', status: 'Відповідає' }, { label: 'Регіон доставки', value: 'Україна', status: 'Відповідає' }, { label: 'MOQ', value: 'від 10 кг', status: 'Відповідає' }, { label: 'Ціна', value: 'від 320 грн/кг', status: 'Частково відповідає' },
   ] },
@@ -35,7 +35,7 @@ const suppliers: Supplier[] = [
   ] },
 ];
 
-function CriterionStatusIcon({ status }: { status: CriterionStatus }) {
+export function CriterionStatusIcon({ status }: { status: CriterionStatus }) {
   if (status === 'Відповідає') {
     return <span aria-label={status} className={cn(styles.statusIcon, styles.success)} data-tooltip={status} role="img" tabIndex={0}><Check aria-hidden="true" /></span>;
   }
@@ -90,12 +90,21 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
 
 function isSpecificRequest(query: string) { return query.trim().length >= 25 && query.trim().split(/\s+/).length >= 5; }
 
-export function SupplierSearchPage() {
-  const [query, setQuery] = useState('');
-  const [stage, setStage] = useState<SearchStage>('idle');
-  const [deliveryRegion, setDeliveryRegion] = useState('');
-  const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
-  const [showCompareLimit, setShowCompareLimit] = useState(false);
+type SupplierSearchPageProps = {
+  query: string;
+  setQuery: Dispatch<SetStateAction<string>>;
+  stage: SearchStage;
+  setStage: Dispatch<SetStateAction<SearchStage>>;
+  deliveryRegion: string;
+  setDeliveryRegion: Dispatch<SetStateAction<string>>;
+  selectedSuppliers: string[];
+  setSelectedSuppliers: Dispatch<SetStateAction<string[]>>;
+  showCompareLimit: boolean;
+  setShowCompareLimit: Dispatch<SetStateAction<boolean>>;
+};
+
+export function SupplierSearchPage({ query, setQuery, stage, setStage, deliveryRegion, setDeliveryRegion, selectedSuppliers, setSelectedSuppliers, showCompareLimit, setShowCompareLimit }: SupplierSearchPageProps) {
+  const navigate = useNavigate();
   const loadingTimer = useRef<number | null>(null);
   useEffect(() => () => { if (loadingTimer.current !== null) window.clearTimeout(loadingTimer.current); }, []);
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -140,12 +149,12 @@ export function SupplierSearchPage() {
         <aside className={styles.filters}><div className={styles.filterTitle}><SlidersHorizontal size={17}/><h2>Фільтри</h2></div><Filters /></aside>
         <details className={styles.mobileFilters}><summary><span><SlidersHorizontal size={17}/>Фільтри</span><ChevronDown size={18}/></summary><Filters /></details>
         <div className={styles.resultsCard}>
-          <div className={styles.resultsHeader}><h2 id="search-results-title">Результати пошуку</h2><p>Кава · Україна <span>· Знайдено 3 постачальники</span></p></div>
+          <div className={styles.resultsHeader}><h2 id="search-results-title">Результати пошуку</h2><p>Кава · Україна <span>· Знайдено постачальників: {suppliers.length}</span></p></div>
           <div className={styles.supplierList}>{suppliers.map(supplier => <SupplierCard key={supplier.name} supplier={supplier} isSelected={selectedSuppliers.includes(supplier.name)} onCompareChange={handleCompareChange} />)}</div>
           {showCompareLimit && <p className={styles.compareLimit} role="status">Для порівняння можна обрати до 3 постачальників</p>}
           {selectedSuppliers.length >= 2 && <div className={styles.compareBar} aria-label={`Обрано постачальників: ${selectedSuppliers.length}`}>
             <div><strong>Обрано для порівняння</strong><span>{selectedSuppliers.length} з 3 постачальників</span></div>
-            <Button type="button" aria-label={`Порівняти ${selectedSuppliers.length} постачальників`} onClick={() => undefined}>Порівняти ({selectedSuppliers.length})</Button>
+            <Button type="button" aria-label={`Порівняти ${selectedSuppliers.length} постачальників`} onClick={() => navigate('/app/compare')}>Порівняти ({selectedSuppliers.length})</Button>
           </div>}
         </div>
       </section>}
