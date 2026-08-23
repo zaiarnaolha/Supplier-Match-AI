@@ -1,12 +1,11 @@
 import '../../styles/shadcn.css';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { Box, ChevronDown, MapPin, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Box, Check, ChevronDown, CircleHelp, MapPin, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
 
 type SearchStage = 'idle' | 'loading' | 'clarification' | 'search-ready';
@@ -33,18 +32,22 @@ const suppliers: Supplier[] = [
   ] },
 ];
 
-function statusClassName(status: CriterionStatus) {
-  if (status === 'Відповідає') return styles.success;
-  if (status === 'Частково відповідає') return styles.partial;
-  return styles.unknown;
+function CriterionStatusIcon({ status }: { status: CriterionStatus }) {
+  if (status === 'Відповідає') {
+    return <span aria-label={status} className={cn(styles.statusIcon, styles.success)} role="img" tabIndex={0} title={status}><Check aria-hidden="true" /></span>;
+  }
+  if (status === 'Частково відповідає') {
+    return <span aria-label={status} className={cn(styles.statusIcon, styles.partial)} role="img" tabIndex={0} title={status}><span aria-hidden="true" /></span>;
+  }
+  return <span aria-label={status} className={cn(styles.statusIcon, styles.unknown)} role="img" tabIndex={0} title={status}><CircleHelp aria-hidden="true" /></span>;
 }
 
 function Filters() {
   return <div className={styles.filterFields}>
     <label><span>Категорія</span><Select defaultValue="coffee"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="coffee">Кава</SelectItem><SelectItem value="grocery">Бакалія</SelectItem></SelectContent></Select></label>
-    <label><span>Регіон доставки</span><Select defaultValue="ukraine"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem></SelectContent></Select></label>
-    <label><span>Мінімальне замовлення</span><Select defaultValue="any"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Будь-яке</SelectItem><SelectItem value="10">До 10 кг</SelectItem><SelectItem value="50">До 50 кг</SelectItem></SelectContent></Select></label>
-    <label><span>Статус відповідності</span><Select defaultValue="all"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Усі результати</SelectItem><SelectItem value="full">Відповідає</SelectItem><SelectItem value="partial">Частково</SelectItem></SelectContent></Select></label>
+    <label><span>Країна / регіон</span><Select defaultValue="ukraine"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem></SelectContent></Select></label>
+    <label><span>Ціна</span><Select defaultValue="any"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Будь-яка</SelectItem><SelectItem value="300">До 300 грн/кг</SelectItem><SelectItem value="500">До 500 грн/кг</SelectItem></SelectContent></Select></label>
+    <label><span>MOQ</span><Select defaultValue="any"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Будь-яке</SelectItem><SelectItem value="10">До 10 кг</SelectItem><SelectItem value="50">До 50 кг</SelectItem></SelectContent></Select></label>
   </div>;
 }
 
@@ -60,7 +63,7 @@ function SupplierCard({ supplier }: { supplier: Supplier }) {
     <dl className={styles.criteria}>
       {supplier.criteria.map((criterion) => <div key={criterion.label}>
         <dt>{criterion.label}</dt><dd>{criterion.value}</dd>
-        <Badge className={cn(styles.status, statusClassName(criterion.status))} variant="outline">{criterion.status}</Badge>
+        <CriterionStatusIcon status={criterion.status} />
       </div>)}
     </dl>
     <div className={styles.supplierActions}>
@@ -87,8 +90,6 @@ export function SupplierSearchPage() {
   return <div className={cn('shadcn', styles.page)}>
     <header className={styles.header}><div className={styles.headerInner}>
       <Link className={styles.brand} to="/app"><span>SM</span>Supplier Match <b>AI</b></Link>
-      <nav aria-label="Головна навігація"><a className={styles.active} href="#search">Пошук</a><a href="#requests">Мої запити</a><a href="#saved">Обране</a></nav>
-      <div className={styles.avatar}>OK</div>
     </div></header>
     <main className={styles.main}>
       <section className={styles.searchCard} id="search">
@@ -99,7 +100,7 @@ export function SupplierSearchPage() {
         </form>
         {stage === 'clarification' && <div className={styles.clarification}>
           <div><strong>Уточніть регіон доставки</strong><p>Це допоможе знайти релевантніші варіанти.</p></div>
-          <Select value={deliveryRegion} onValueChange={setDeliveryRegion}><SelectTrigger aria-label="Регіон отримання товару"><SelectValue placeholder="Оберіть регіон" /></SelectTrigger><SelectContent><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem><SelectItem value="asia">Азія</SelectItem><SelectItem value="anywhere">Будь-яка країна</SelectItem></SelectContent></Select>
+          <Select value={deliveryRegion} onValueChange={setDeliveryRegion}><SelectTrigger className={styles.neutralSelect} aria-label="Регіон отримання товару"><SelectValue placeholder="Оберіть регіон" /></SelectTrigger><SelectContent><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem><SelectItem value="asia">Азія</SelectItem><SelectItem value="anywhere">Будь-яка країна</SelectItem></SelectContent></Select>
           <Button type="button" disabled={!deliveryRegion} onClick={() => setStage('search-ready')}>Продовжити пошук</Button>
         </div>}
       </section>
@@ -108,7 +109,7 @@ export function SupplierSearchPage() {
         <aside className={styles.filters}><div className={styles.filterTitle}><SlidersHorizontal size={17}/><h2>Фільтри</h2></div><Filters /></aside>
         <details className={styles.mobileFilters}><summary><span><SlidersHorizontal size={17}/>Фільтри</span><ChevronDown size={18}/></summary><Filters /></details>
         <div className={styles.resultsCard}>
-          <div className={styles.resultsHeader}><div><h2 id="search-results-title">Результати пошуку</h2><p>Кава · Україна <span>· Знайдено 3 постачальники</span></p></div><Select defaultValue="best"><SelectTrigger aria-label="Сортування"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="best">Найкраще співпадіння</SelectItem><SelectItem value="new">Нещодавно оновлені</SelectItem></SelectContent></Select></div>
+          <div className={styles.resultsHeader}><div><h2 id="search-results-title">Результати пошуку</h2><p>Кава · Україна <span>· Знайдено 3 постачальники</span></p></div><Select defaultValue="best"><SelectTrigger className={styles.sortSelect} aria-label="Сортування"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="best">Найкраще співпадіння</SelectItem><SelectItem value="new">Нещодавно оновлені</SelectItem></SelectContent></Select></div>
           <div className={styles.supplierList}>{suppliers.map(supplier => <SupplierCard key={supplier.name} supplier={supplier} />)}</div>
         </div>
       </section>}
