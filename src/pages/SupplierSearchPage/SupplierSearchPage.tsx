@@ -2,6 +2,7 @@ import '../../styles/shadcn.css';
 import { useEffect, useRef, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
@@ -135,12 +136,12 @@ export function SupplierSearchPage({ query, setQuery, stage, setStage, deliveryR
       <section className={styles.searchCard} id="search">
         <h1>Опишіть, що вам потрібно знайти</h1>
         <form onSubmit={handleSubmit}>
-          <div className={styles.searchInput}><Search size={20} /><input aria-label="Опишіть потребу в постачальнику" placeholder="Наприклад: шукаю постачальника бакалії з доставкою до Коломиї" value={query} onChange={e => setQuery(e.target.value)} disabled={stage === 'loading' || stage === 'search-ready'} /></div>
+          <div className={styles.searchInput}><Search size={20} /><Input className="pl-10" aria-label="Опишіть потребу в постачальнику" placeholder="Наприклад: шукаю постачальника бакалії з доставкою до Коломиї" value={query} onChange={e => setQuery(e.target.value)} disabled={stage === 'loading' || stage === 'search-ready'} /></div>
           {(stage === 'idle' || stage === 'loading') && <Button type="submit" disabled={!query.trim() || stage === 'loading'}><Sparkles size={16} />{stage === 'loading' ? 'Аналізуємо запит…' : 'Знайти постачальників'}</Button>}
         </form>
         {stage === 'clarification' && <div className={styles.clarification}>
           <div><strong>Уточніть регіон доставки</strong><p>Це допоможе знайти релевантніші варіанти.</p></div>
-          <Select value={deliveryRegion} onValueChange={setDeliveryRegion}><SelectTrigger className={styles.neutralSelect} aria-label="Регіон отримання товару"><SelectValue placeholder="Оберіть регіон" /></SelectTrigger><SelectContent className={styles.clarificationSelectContent}><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem><SelectItem value="asia">Азія</SelectItem><SelectItem value="anywhere">Будь-яка країна</SelectItem></SelectContent></Select>
+          <Select value={deliveryRegion} onValueChange={setDeliveryRegion}><SelectTrigger className={styles.neutralSelect} aria-label="Регіон отримання товару"><SelectValue placeholder="Оберіть регіон" /></SelectTrigger><SelectContent><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem><SelectItem value="asia">Азія</SelectItem><SelectItem value="anywhere">Будь-яка країна</SelectItem></SelectContent></Select>
           <Button type="button" disabled={!deliveryRegion} onClick={() => setStage('search-ready')}>Продовжити пошук</Button>
         </div>}
       </section>

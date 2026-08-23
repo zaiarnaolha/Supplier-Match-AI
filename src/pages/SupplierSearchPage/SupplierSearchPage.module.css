@@ -9,17 +9,16 @@
 .searchCard { padding: 22px 24px; }
 .searchCard h1 { margin-bottom: 14px; font-family: Inter, sans-serif; font-size: 16px; letter-spacing: -.015em; }
 .searchCard form { display: flex; gap: 14px; }
-.searchInput { display: flex; min-width: 0; height: 42px; flex: 1; align-items: center; gap: 12px; padding: 0 15px; border: 1px solid #d9e0eb; border-radius: 9px; color: #718096; background: #fff; }
-.searchInput:focus-within { border-color: #6c7ff2; box-shadow: 0 0 0 3px rgb(79 70 229 / 10%); }
-.searchInput input { width: 100%; min-width: 0; border: 0; outline: 0; color: #202a3d; background: transparent; font: 400 14px Inter, sans-serif; }
+.searchInput { position: relative; min-width: 0; flex: 1; color: #718096; }
+.searchInput > svg { position: absolute; z-index: 1; top: 50%; left: 12px; pointer-events: none; transform: translateY(-50%); }
+.searchInput input { min-width: 0; border-color: #d9e0eb; color: #202a3d; background: #fff; }
+.searchInput input:focus-visible { border-color: #6c7ff2; box-shadow: 0 0 0 3px rgb(79 70 229 / 10%); }
 .searchInput input::placeholder { color: #8390a5; }
 .searchCard form > button, .clarification > button { gap: 8px; background: linear-gradient(135deg, #2563eb, #5746e8); }
 .clarification { display: grid; grid-template-columns: 1fr 220px auto; align-items: center; gap: 14px; margin-top: 14px; padding: 14px; border: 1px solid #e2e6f0; border-radius: 10px; background: #f8f9fd; }
 .clarification strong { font-size: 13px; }
 .clarification p { margin-top: 3px; color: #778197; font-size: 12px; }
 .neutralSelect, .filterFields button { border: 1px solid #d7dde7; color: #263248; background: #fff !important; box-shadow: 0 1px 3px rgb(30 48 80 / 7%); }
-.neutralSelect { min-height: 42px; border-radius: var(--radius-small); }
-.neutralSelect, .clarificationSelectContent [data-slot="select-item"] { font-size: 13px; font-weight: 600; line-height: 1.2; }
 .neutralSelect:hover, .neutralSelect[data-state="open"], .filterFields button:hover, .filterFields button[data-state="open"] { color: #263248; background: #f9fafc !important; }
 .neutralSelect:focus, .neutralSelect:focus-visible, .filterFields button:focus-visible { border-color: #a8b2ec; color: #263248; background: #fff !important; box-shadow: 0 0 0 3px rgb(79 70 229 / 10%); }
 .neutralSelect svg, .filterFields button svg { color: #667085; opacity: 1; }
@@ -104,8 +103,6 @@
   .searchCard { padding: 18px; }
   .searchCard h1 { font-size: 15px; }
   .searchCard form { flex-direction: column; }
-  .searchInput { min-height: 42px; height: 42px; padding-block: 0; }
-  .searchInput input { font-size: 16px; line-height: 1.4; }
   .searchCard form > button { width: 100%; }
   .clarification { grid-template-columns: 1fr; }
   .clarification > button { width: 100%; }

@@ -56,7 +56,7 @@
   .mobileComparison { display: block; min-width: 0; }
   .mobileSelectors { display: grid; min-width: 0; gap: 15px; margin-bottom: 18px; }
   .mobileSelectors label { display: grid; min-width: 0; gap: 7px; color: #596579; font-size: 12px; font-weight: 600; }
-  .neutralSelect { width: 100%; min-width: 0; height: 44px; border: 1px solid #d7dde7; border-radius: 9px; color: #263248; background: #fff !important; box-shadow: 0 1px 3px rgb(30 48 80 / 7%); }
+  .neutralSelect { width: 100%; min-width: 0; border: 1px solid #d7dde7; color: #263248; background: #fff !important; box-shadow: 0 1px 3px rgb(30 48 80 / 7%); }
   .neutralSelect:hover, .neutralSelect[data-state="open"] { color: #263248; background: #f9fafc !important; }
   .neutralSelect:focus, .neutralSelect:focus-visible { border-color: #a8b2ec; color: #263248; background: #fff !important; box-shadow: 0 0 0 3px rgb(79 70 229 / 10%); }
   .neutralSelect svg { color: #667085; opacity: 1; }
