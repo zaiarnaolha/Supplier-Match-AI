@@ -32,7 +32,7 @@
 .valueCell > span { min-width: 0; }
 .valueCell > span + span { flex: 0 0 18px; margin-top: 1px; }
 .actionsRow > div, .actionsRow > button { margin: 18px; }
-.actionsRow > button { min-width: 0; min-height: 40px; padding-inline: 10px; background: #4f46e5; font-size: 13px; white-space: normal; }
+.actionsRow > button { min-width: 0; background: #4f46e5; white-space: normal; }
 .mobileComparison { display: none; }
 
 @media (max-width: 900px) {
@@ -78,5 +78,5 @@
   .mobileValues > div > span:first-child { min-width: 0; }
   .mobileValues > div > span + span { flex: 0 0 18px; margin-top: 1px; }
   .mobileActions { display: grid; gap: 10px; margin-top: 16px; }
-  .mobileActions button { width: 100%; min-height: 46px; background: linear-gradient(135deg, #2563eb, #5746e8); white-space: normal; }
+  .mobileActions button { width: 100%; background: linear-gradient(135deg, #2563eb, #5746e8); white-space: normal; }
 }
