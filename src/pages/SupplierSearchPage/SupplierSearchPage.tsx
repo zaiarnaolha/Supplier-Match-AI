@@ -1,1 +1,3 @@
-export function SupplierSearchPage(){return <main>Supplier Match AI — Search</main>}
+import '../../styles/shadcn.css';
+
+export function SupplierSearchPage(){return <main className="shadcn">Supplier Match AI — Search</main>}
