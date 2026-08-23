@@ -43,7 +43,7 @@
 
 @media (max-width: 600px) {
   .siteHeader { height: 58px; }
-  .headerInner, .main { width: min(100% - 24px, 1240px); }
+  .headerInner, .main { width: min(100% - 40px, 1240px); }
   .main { padding: 20px 0 40px; }
   .titleBlock { margin: 18px 0; }
   .titleBlock h1 { font-size: 23px; }
@@ -71,7 +71,6 @@
   .mobileMatrix h2 { padding: 7px 10px; color: #59657a; background: #f6f7fb; font-family: Inter, sans-serif; font-size: 10px; letter-spacing: 0; }
   .mobileColumns > * { min-width: 0; padding: 10px; }
   .mobileColumns > * + * { border-left: 1px solid #edf0f4; }
-  .mobileMatch { color: #08753b; font-size: 17px; }
   .mobileValue { display: grid; grid-template-columns: minmax(0, 1fr) 18px; align-items: start; gap: 6px; color: #263248; font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
   .mobileActions { display: grid; gap: 9px; margin-top: 16px; }
   .mobileActions button { width: 100%; min-height: 42px; padding: 8px 12px; background: #4f46e5; font-size: 11px; line-height: 1.3; white-space: normal; }

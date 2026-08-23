@@ -79,7 +79,6 @@ export function CompareScreen({ suppliers, onBack, onRemove }: CompareScreenProp
           </div>
           <div className={styles.mobileSupplierHeaders}>{mobileSuppliers.map(supplier => <MobileSupplierHeader key={supplier.name} supplier={supplier} onRemove={onRemove} />)}</div>
           <div className={styles.mobileMatrix}>
-            <section><h2>Match</h2><div className={styles.mobileColumns}>{mobileSuppliers.map(supplier => <strong className={styles.mobileMatch} key={supplier.name}>{supplier.match.split('%')[0]}%</strong>)}</div></section>
             {criterionLabels.map(label => <section key={label}>
               <h2>{label}</h2>
               <div className={styles.mobileColumns}>{mobileSuppliers.map(supplier => {
