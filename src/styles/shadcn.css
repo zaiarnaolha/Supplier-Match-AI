@@ -1,0 +1,45 @@
+@layer theme, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme inline {
+  --color-background: var(--app-background);
+  --color-foreground: var(--app-foreground);
+  --color-card: var(--app-card);
+  --color-card-foreground: var(--app-card-foreground);
+  --color-primary: var(--app-primary);
+  --color-primary-foreground: var(--app-primary-foreground);
+  --color-secondary: var(--app-secondary);
+  --color-secondary-foreground: var(--app-secondary-foreground);
+  --color-muted: var(--app-muted);
+  --color-muted-foreground: var(--app-muted-foreground);
+  --color-accent: var(--app-accent);
+  --color-accent-foreground: var(--app-accent-foreground);
+  --color-destructive: var(--app-destructive);
+  --color-border: var(--app-border);
+  --color-input: var(--app-input);
+  --color-ring: var(--app-ring);
+  --radius-sm: calc(var(--app-radius) - 4px);
+  --radius-md: calc(var(--app-radius) - 2px);
+  --radius-lg: var(--app-radius);
+}
+
+.shadcn {
+  --app-background: oklch(1 0 0);
+  --app-foreground: oklch(0.145 0 0);
+  --app-card: oklch(1 0 0);
+  --app-card-foreground: oklch(0.145 0 0);
+  --app-primary: oklch(0.511 0.262 276.966);
+  --app-primary-foreground: oklch(0.985 0 0);
+  --app-secondary: oklch(0.97 0 0);
+  --app-secondary-foreground: oklch(0.205 0 0);
+  --app-muted: oklch(0.97 0 0);
+  --app-muted-foreground: oklch(0.556 0 0);
+  --app-accent: oklch(0.97 0 0);
+  --app-accent-foreground: oklch(0.205 0 0);
+  --app-destructive: oklch(0.577 0.245 27.325);
+  --app-border: oklch(0.922 0 0);
+  --app-input: oklch(0.922 0 0);
+  --app-ring: oklch(0.585 0.233 277.117);
+  --app-radius: 0.625rem;
+}
