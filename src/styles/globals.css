@@ -3,7 +3,8 @@
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: var(--header-height); }
 body { margin: 0; min-width: 320px; color: var(--semantic-text-primary); background: var(--semantic-surface-default); font-family: Inter, sans-serif; -webkit-font-smoothing: antialiased; }
-button, a { font: inherit; }
+button, input { font-family: Inter, sans-serif; }
+a { font: inherit; }
 button { border: 0; }
 a { color: inherit; text-decoration: none; }
 img { display: block; max-width: 100%; }
