@@ -111,7 +111,7 @@
   .criteria dd { font-size: 13px; }
   .supplierActions { display: grid; grid-template-columns: 1fr; align-items: stretch; gap: 14px; margin-top: 0; padding-top: 0; border-top: 0; }
   .supplierActions label { font-size: 13px; white-space: normal; }
-  .supplierActions > button { width: 100%; }
+  .supplierActions > button { width: fit-content; justify-self: end; }
   .resultsCard:has(.compareBar) { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
   .compareBar { bottom: max(8px, env(safe-area-inset-bottom)); gap: 10px; margin: 14px 0 0; padding: 10px; border-radius: 10px; }
   .compareBar strong { font-size: 12px; }
@@ -120,6 +120,7 @@
 }
 
 @media (max-width: 480px) {
+  .supplierActions > button { width: 100%; justify-self: stretch; }
   .criteria > div { grid-template-columns: minmax(0, 1fr) 18px; gap: 3px 8px; }
   .criteria dt { grid-column: 1; grid-row: 1; text-align: left; }
   .criteria dd { grid-column: 1; grid-row: 2; text-align: left; }

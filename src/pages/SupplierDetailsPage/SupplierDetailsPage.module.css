@@ -42,8 +42,11 @@
   .identity { flex-direction: column; }
   .identity h1 { font-size: 23px; }
   .match { display: flex; width: 100%; align-items: center; justify-content: space-between; }
-  .heroContent > a { width: 100%; }
+  .heroContent > a { width: fit-content; }
   .columns { grid-template-columns: 1fr; gap: 14px; }
   .contacts { grid-template-columns: 1fr; gap: 14px; }
   .criteria > div { grid-template-columns: 100px minmax(0, 1fr) 18px; gap: 8px; }
+}
+@media (max-width: 480px) {
+  .heroContent > a { width: 100%; }
 }
