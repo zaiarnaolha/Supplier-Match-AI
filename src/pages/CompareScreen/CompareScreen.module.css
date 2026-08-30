@@ -74,6 +74,13 @@
   .mobileValues > div:first-child { border-right: 1px solid #edf0f4; }
   .mobileValues > div > span:first-child { min-width: 0; }
   .mobileValues > div > span + span { flex: 0 0 18px; margin-top: 1px; }
-  .mobileActions { display: grid; gap: 10px; margin-top: 16px; }
+  .mobileActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
   .mobileActions button { width: 100%; background: linear-gradient(135deg, #2563eb, #5746e8); white-space: normal; }
+  .mobileActionIcon { display: none; }
+}
+
+@media (max-width: 480px) {
+  .mobileActions button { width: 40px; height: 40px; padding: 0; justify-self: center; white-space: nowrap; }
+  .mobileActionText { display: none; }
+  .mobileActionIcon { display: block; width: 18px; height: 18px; }
 }
