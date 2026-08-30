@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { suppliers, type Supplier } from '@/data/suppliers';
 import { CriterionStatusIcon } from '@/components/CriterionStatusIcon/CriterionStatusIcon';
-import { ArrowRight, Box, ChevronDown, MapPin, RotateCcw, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Box, ChevronDown, MapPin, RotateCcw, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
 
 export type SearchStage = 'idle' | 'loading' | 'clarification' | 'search-ready';
@@ -66,7 +66,7 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
     </div>
     <div className={styles.supplierActions}>
       <label htmlFor={checkboxId}><Checkbox id={checkboxId} checked={isSelected} onCheckedChange={(checked: boolean | 'indeterminate') => onCompareChange(supplier.name, checked === true)} /><span>Додати до порівняння</span></label>
-      <Button type="button" onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути постачальника<ArrowRight size={16} /></Button>
+      <Button type="button" onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути постачальника</Button>
     </div>
   </article>;
 }
