@@ -1,6 +1,7 @@
 import '../../styles/shadcn.css';
 import { ArrowLeft, ExternalLink, Globe, Mail, MapPin, Phone } from 'lucide-react';
 import { Link, Navigate, useParams } from 'react-router-dom';
+import { Brand } from '@/components/Brand/Brand';
 import { CriterionStatusIcon } from '@/components/CriterionStatusIcon/CriterionStatusIcon';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,7 +19,7 @@ export function SupplierDetailsPage() {
 
   return <div className={cn('shadcn', styles.page)}>
     <header className={styles.siteHeader}><div className={styles.siteHeaderInner}>
-      <Link className={styles.brand} to="/app"><span>SM</span>Supplier Match <b>AI</b></Link>
+      <Link to="/app" aria-label="Supplier Match AI"><Brand /></Link>
     </div></header>
     <main className={styles.main}>
       <Link className={styles.backLink} to="/app"><ArrowLeft aria-hidden="true" />Назад до результатів</Link>

@@ -1,6 +1,7 @@
 import '../../styles/shadcn.css';
 import { useEffect, useRef, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Brand } from '@/components/Brand/Brand';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -94,7 +95,7 @@ export function SupplierSearchPage({ query, setQuery, stage, setStage, deliveryR
 
   return <div className={cn('shadcn', styles.page)}>
     <header className={styles.header}><div className={styles.headerInner}>
-      <Link className={styles.brand} to="/app"><span>SM</span>Supplier Match <b>AI</b></Link>
+      <Link to="/app" aria-label="Supplier Match AI"><Brand /></Link>
     </div></header>
     <main className={styles.main}>
       <section className={styles.searchCard} id="search">

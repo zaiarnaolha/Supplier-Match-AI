@@ -1,9 +1,6 @@
 .page { min-height: 100vh; overflow-x: hidden; color: #182033; background: #f5f7fb; }
 .header { height: 66px; border-bottom: 1px solid #e5e9f1; background: rgb(255 255 255 / 94%); }
 .headerInner { display: flex; width: min(100% - 48px, 1400px); height: 100%; margin: auto; align-items: center; }
-.brand { display: flex; align-items: center; font-size: 17px; font-weight: 700; letter-spacing: -.03em; }
-.brand > span { display: grid; width: 31px; height: 31px; margin-right: 9px; place-items: center; border-radius: 9px; color: white; background: linear-gradient(135deg, #2563eb, #6d4aff); font-size: 11px; }
-.brand b { margin-left: 4px; color: #2563eb; }
 .main { width: min(100% - 48px, 1320px); margin: auto; padding: 36px 0 64px; }
 .searchCard, .filters, .resultsCard, .mobileFilters { border: 1px solid #e3e8f0; border-radius: 14px; background: #fff; box-shadow: 0 4px 18px rgb(30 48 80 / 4.5%); }
 .searchCard { padding: 22px 24px; }
