@@ -54,7 +54,7 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
         <div className={styles.matchBlock}><strong>{score}%</strong><span>Match</span></div>
         <p className={styles.breakdown}>{supplier.breakdown}</p>
       </div>
-      <small className={styles.updatedAt}>Оновлено:<br />{supplier.updatedAt}</small>
+      <small className={styles.updatedAt}>Оновлено: {supplier.updatedAt}</small>
     </div>
     <div className={styles.criteriaArea}>
       <dl className={styles.criteria}>

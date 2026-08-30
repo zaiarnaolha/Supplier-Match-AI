@@ -41,13 +41,13 @@
 .supplierIcon { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 1px solid #dfe5ef; border-radius: 10px; color: #4f46e5; background: #f8f8ff; }
 .supplierIdentity h3 { overflow-wrap: anywhere; font-family: Inter, sans-serif; font-size: 16px; font-weight: 600; line-height: 1.3; letter-spacing: -.015em; }
 .supplierIdentity p { display: flex; align-items: center; gap: 4px; margin-top: 7px; color: #6f7b90; font-size: 13px; line-height: 1.35; }
-.matchSummary { display: grid; min-width: 0; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 12px; }
-.matchBlock { padding: 8px 7px; border-radius: 9px; text-align: center; background: #f0faf5; }
-.matchBlock span { display: block; color: #16804b; font-size: 12px; }
-.matchBlock strong { display: block; color: #08753b; font-size: 25px; line-height: 1.1; }
+.matchSummary { display: grid; min-width: 0; gap: 4px; padding: 10px 12px; border-radius: 9px; background: #f0faf5; }
+.matchBlock { display: flex; align-items: baseline; gap: 7px; }
+.matchBlock span { color: #16804b; font-size: 12px; font-weight: 500; }
+.matchBlock strong { color: #08753b; font-size: 25px; line-height: 1.1; }
 .updatedAt { color: #8b95a8; font-size: 12px; line-height: 1.45; }
 .criteriaArea { min-width: 0; }
-.breakdown { color: #5f6b7e; font-size: 13px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
+.breakdown { color: #397255; font-size: 12px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
 .criteria { min-width: 0; }
 .criteria > div { display: grid; min-width: 0; grid-template-columns: 112px minmax(0, 1fr) 18px; align-items: center; gap: 9px; padding: 7px 0; border-bottom: 1px solid #eff1f5; }
 .criteria > div:last-child { border-bottom: 0; }
@@ -101,7 +101,6 @@
   .resultsCard { padding: 8px; }
   .supplierCard { display: flex; align-items: stretch; flex-direction: column; gap: 13px; padding: 16px; }
   .supplierIdentity { align-items: flex-start; }
-  .matchSummary { grid-template-columns: 76px minmax(0, 1fr); }
   .matchBlock strong { font-size: 25px; }
   .criteria > div { grid-template-columns: 96px minmax(0, 1fr) 18px; gap: 7px; padding: 8px 0; }
   .criteria > div:last-child { border-bottom: 1px solid #eff1f5; }
