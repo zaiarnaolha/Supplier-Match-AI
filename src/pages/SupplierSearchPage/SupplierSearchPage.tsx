@@ -1,5 +1,5 @@
 import '../../styles/shadcn.css';
-import { useEffect, useRef, type Dispatch, type FormEvent, type SetStateAction } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Brand } from '@/components/Brand/Brand';
 import { Button } from '@/components/ui/button';
@@ -9,16 +9,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { suppliers, type Supplier } from '@/data/suppliers';
 import { CriterionStatusIcon } from '@/components/CriterionStatusIcon/CriterionStatusIcon';
-import { Box, ChevronDown, MapPin, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { ArrowRight, Box, ChevronDown, MapPin, RotateCcw, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
 
 export type SearchStage = 'idle' | 'loading' | 'clarification' | 'search-ready';
 function Filters() {
+  const [category, setCategory] = useState('coffee');
+  const [region, setRegion] = useState('ukraine');
+  const [price, setPrice] = useState('any');
+  const [moq, setMoq] = useState('any');
+  function clearFilters() {
+    setCategory('coffee');
+    setRegion('ukraine');
+    setPrice('any');
+    setMoq('any');
+  }
+
   return <div className={styles.filterFields}>
-    <label><span>Категорія</span><Select defaultValue="coffee"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="coffee">Кава</SelectItem><SelectItem value="grocery">Бакалія</SelectItem></SelectContent></Select></label>
-    <label><span>Країна / регіон</span><Select defaultValue="ukraine"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem></SelectContent></Select></label>
-    <label><span>Ціна</span><Select defaultValue="any"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Будь-яка</SelectItem><SelectItem value="300">До 300 грн/кг</SelectItem><SelectItem value="500">До 500 грн/кг</SelectItem></SelectContent></Select></label>
-    <label><span>MOQ</span><Select defaultValue="any"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Будь-яке</SelectItem><SelectItem value="10">До 10 кг</SelectItem><SelectItem value="50">До 50 кг</SelectItem></SelectContent></Select></label>
+    <label><span>Категорія</span><Select value={category} onValueChange={setCategory}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="coffee">Кава</SelectItem><SelectItem value="grocery">Бакалія</SelectItem></SelectContent></Select></label>
+    <label><span>Країна / регіон</span><Select value={region} onValueChange={setRegion}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem></SelectContent></Select></label>
+    <label><span>Ціна</span><Select value={price} onValueChange={setPrice}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Будь-яка</SelectItem><SelectItem value="300">До 300 грн/кг</SelectItem><SelectItem value="500">До 500 грн/кг</SelectItem></SelectContent></Select></label>
+    <label><span>MOQ</span><Select value={moq} onValueChange={setMoq}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Будь-яке</SelectItem><SelectItem value="10">До 10 кг</SelectItem><SelectItem value="50">До 50 кг</SelectItem></SelectContent></Select></label>
+    <Button className={styles.clearFilters} variant="outline" type="button" onClick={clearFilters}><RotateCcw size={15} />Очистити фільтри</Button>
   </div>;
 }
 
@@ -33,13 +45,16 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
   const checkboxId = `compare-${supplier.name.toLowerCase().replace(/\s+/g, '-')}`;
   const score = supplier.match.split('%')[0];
   return <article className={cn(styles.supplierCard, isSelected && styles.supplierCardSelected)}>
-    <div className={styles.supplierIdentity}>
-      <div className={styles.supplierIcon}><Box size={21} /></div>
-      <div className={styles.supplierInfo}><h3>{supplier.name}</h3><p><MapPin size={13} />{supplier.location}</p><small>Оновлено: {supplier.updatedAt}</small></div>
-    </div>
-    <div className={styles.matchBlock}><span>Match</span><strong>{score}%</strong></div>
-    <div className={styles.criteriaArea}>
+    <div className={styles.supplierSummary}>
+      <div className={styles.supplierIdentity}>
+        <div className={styles.supplierIcon}><Box size={21} /></div>
+        <div className={styles.supplierInfo}><h3>{supplier.name}</h3><p><MapPin size={13} />{supplier.location}</p></div>
+      </div>
+      <div className={styles.matchBlock}><strong>{score}%</strong><span>Match</span></div>
       <p className={styles.breakdown}>{supplier.breakdown}</p>
+      <small className={styles.updatedAt}>Оновлено: {supplier.updatedAt}</small>
+    </div>
+    <div className={styles.criteriaArea}>
       <dl className={styles.criteria}>
         {supplier.criteria.map((criterion) => <div key={criterion.label}>
           <dt>{criterion.label}</dt><dd>{criterion.value}</dd>
@@ -49,7 +64,7 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
     </div>
     <div className={styles.supplierActions}>
       <label htmlFor={checkboxId}><Checkbox id={checkboxId} checked={isSelected} onCheckedChange={(checked: boolean | 'indeterminate') => onCompareChange(supplier.name, checked === true)} /><span>Додати до порівняння</span></label>
-      <Button type="button" onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути</Button>
+      <Button type="button" onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути постачальника<ArrowRight size={16} /></Button>
     </div>
   </article>;
 }
