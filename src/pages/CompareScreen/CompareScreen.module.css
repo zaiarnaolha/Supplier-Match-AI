@@ -42,7 +42,7 @@
   .actionsRow > div, .actionsRow > button { margin: 14px; }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 720px) {
   .siteHeader { height: 58px; }
   .siteHeaderInner, .main { width: calc(100% - 40px); }
   .main { max-width: 100%; padding: 20px 0 44px; }

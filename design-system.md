@@ -70,6 +70,24 @@ Desktop and Mobile are separate responsive references.
 
 Do not implement Mobile by proportionally scaling Desktop.
 
+### Shared breakpoint scale
+
+All Supplier Match AI screens use the same four semantic breakpoint families:
+
+| Name | Boundary | Role |
+| --- | ---: | --- |
+| Wide desktop | `1200px` | Enables dense Product layouts that need additional horizontal space. |
+| Tablet | `900px` | Desktop-to-tablet structural transition. |
+| Mobile | `720px` | Tablet-to-mobile composition transition. |
+| Narrow mobile | `480px` | Small-screen adaptation for intrinsically wide content. |
+
+Breakpoint values are shared, but each screen may respond differently at a
+given boundary. CSS custom properties cannot be used in media-query conditions
+with the current build, so CSS Modules use these values as literals. Derived
+inverse and range expressions, such as `max-width: 1199px` and
+`min-width: 481px and max-width: 900px`, belong to the corresponding canonical
+boundary and do not define additional breakpoint families.
+
 Use the references to determine:
 
 - stacking;

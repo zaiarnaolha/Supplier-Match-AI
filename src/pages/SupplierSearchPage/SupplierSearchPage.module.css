@@ -69,10 +69,10 @@
 @media (max-width: 1199px) {
   .resultsLayout { grid-template-columns: 260px minmax(0, 1fr); }
   .supplierCard { grid-template-columns: minmax(270px, 1fr) minmax(245px, 1.2fr); }
-  .supplierActions { grid-column: 1 / -1; display: flex; align-items: center; justify-content: flex-end; padding-top: 10px; border-top: 1px solid #edf0f4; }
+  .supplierActions { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding-top: 10px; border-top: 1px solid #edf0f4; }
 }
 
-@media (max-width: 899px) {
+@media (max-width: 900px) {
   .headerInner, .main { width: min(100% - 32px, 1320px); }
   .main { padding-top: 24px; }
   .resultsLayout { grid-template-columns: 1fr; }
@@ -83,11 +83,10 @@
   .mobileFilters summary::-webkit-details-marker { display: none; }
   .mobileFilters[open] summary svg:last-child { transform: rotate(180deg); }
   .mobileFilters .filterFields { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0 18px 18px; }
-  .supplierCard { grid-template-columns: minmax(0, 1fr); }
-  .supplierActions { grid-column: auto; }
+  .mobileFilters .clearFilters { width: fit-content; grid-column: 1 / -1; justify-self: start; }
 }
 
-@media (max-width: 679px) {
+@media (max-width: 720px) {
   .header { height: 58px; }
   .headerInner, .main { width: min(100% - 24px, 1320px); }
   .main { padding: 16px 0 40px; }
@@ -99,6 +98,7 @@
   .clarification > button { width: 100%; }
   .resultsLayout { gap: 12px; margin-top: 16px; }
   .mobileFilters .filterFields { grid-template-columns: 1fr; }
+  .mobileFilters .clearFilters { grid-column: auto; }
   .resultsCard { padding: 8px; }
   .supplierCard { display: flex; align-items: stretch; flex-direction: column; gap: 13px; padding: 16px; }
   .supplierIdentity { align-items: flex-start; }
@@ -117,7 +117,7 @@
   .compareBar button { min-width: 128px; }
 }
 
-@media (max-width: 420px) {
+@media (max-width: 480px) {
   .criteria > div { grid-template-columns: minmax(0, 1fr) 18px; gap: 3px 8px; }
   .criteria dt { grid-column: 1; grid-row: 1; }
   .criteria dd { grid-column: 1; grid-row: 2; }
