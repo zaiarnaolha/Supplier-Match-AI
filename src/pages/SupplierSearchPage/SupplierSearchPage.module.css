@@ -41,9 +41,11 @@
 .supplierIcon { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 1px solid #dfe5ef; border-radius: 10px; color: #4f46e5; background: #f8f8ff; }
 .supplierIdentity h3 { overflow-wrap: anywhere; font-family: Inter, sans-serif; font-size: 16px; font-weight: 600; line-height: 1.3; letter-spacing: -.015em; }
 .supplierIdentity p { display: flex; align-items: center; gap: 4px; margin-top: 7px; color: #6f7b90; font-size: 13px; line-height: 1.35; }
-.matchBlock { display: inline-flex; align-items: baseline; gap: 5px; margin-top: 3px; padding: 7px 10px; border-radius: 9px; background: #f0faf5; }
-.matchBlock span { color: #16804b; font-size: 12px; }
-.matchBlock strong { color: #08753b; font-size: 25px; line-height: 1; }
+.matchBlock { display: inline-grid; gap: 3px; margin-top: 3px; padding: 7px 10px; border-radius: 9px; background: #f0faf5; }
+.matchScore { display: flex; align-items: baseline; gap: 5px; }
+.matchScore span { color: #16804b; font-size: 12px; }
+.matchScore strong { color: #08753b; font-size: 25px; line-height: 1; }
+.matchBlock .breakdown { color: #286849; font-size: 11px; font-weight: 500; line-height: 1.35; }
 .updatedAt { color: #8b95a8; font-size: 12px; line-height: 1.45; }
 .criteriaArea { min-width: 0; }
 .breakdown { color: #5f6b7e; font-size: 13px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
