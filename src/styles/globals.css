@@ -4,9 +4,10 @@
 html { scroll-behavior: smooth; scroll-padding-top: var(--header-height); }
 body { margin: 0; min-width: 320px; color: var(--semantic-text-primary); background: var(--semantic-surface-default); font-family: Inter, sans-serif; -webkit-font-smoothing: antialiased; }
 button, input { font-family: Inter, sans-serif; }
-a { font: inherit; }
 button { border: 0; }
-a { color: inherit; text-decoration: none; }
+@layer base {
+  a { color: inherit; font: inherit; text-decoration: none; }
+}
 img { display: block; max-width: 100%; }
 h1, h2, h3, p { margin: 0; }
 h1, h2, h3 { font-family: 'Instrument Sans', sans-serif; letter-spacing: -0.035em; }

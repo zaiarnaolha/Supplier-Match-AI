@@ -30,7 +30,7 @@ export function SupplierDetailsPage() {
             <div className={styles.match}><span>Match</span><strong>{score}%</strong></div>
           </div>
           <p className={styles.summary}>{supplier.description}</p>
-          <a className={buttonVariants()} href={supplier.website} target="_blank" rel="noreferrer">Перейти на сайт<ExternalLink aria-hidden="true" /></a>
+          <a className={buttonVariants()} data-slot="button" href={supplier.website} target="_blank" rel="noreferrer">Перейти на сайт<ExternalLink aria-hidden="true" /></a>
         </CardContent>
       </Card>
 
