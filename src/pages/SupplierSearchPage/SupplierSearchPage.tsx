@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { suppliers, type Supplier } from '@/data/suppliers';
 import { CriterionStatusIcon } from '@/components/CriterionStatusIcon/CriterionStatusIcon';
-import { ArrowRight, Box, ChevronDown, MapPin, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { ArrowRight, Box, ChevronDown, MapPin, RotateCcw, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
 
 export type SearchStage = 'idle' | 'loading' | 'clarification' | 'search-ready';
@@ -30,7 +30,7 @@ function Filters() {
     <label><span>Країна / регіон</span><Select value={region} onValueChange={setRegion}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem></SelectContent></Select></label>
     <label><span>Ціна</span><Select value={price} onValueChange={setPrice}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Будь-яка</SelectItem><SelectItem value="300">До 300 грн/кг</SelectItem><SelectItem value="500">До 500 грн/кг</SelectItem></SelectContent></Select></label>
     <label><span>MOQ</span><Select value={moq} onValueChange={setMoq}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Будь-яке</SelectItem><SelectItem value="10">До 10 кг</SelectItem><SelectItem value="50">До 50 кг</SelectItem></SelectContent></Select></label>
-    <Button className={styles.clearFilters} variant="outline" type="button" onClick={clearFilters}>Очистити фільтри</Button>
+    <Button className={styles.clearFilters} variant="outline" size="sm" type="button" onClick={clearFilters}><RotateCcw size={14} />Очистити фільтри</Button>
   </div>;
 }
 
@@ -66,7 +66,7 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
     </div>
     <div className={styles.supplierActions}>
       <label htmlFor={checkboxId}><Checkbox id={checkboxId} checked={isSelected} onCheckedChange={(checked: boolean | 'indeterminate') => onCompareChange(supplier.name, checked === true)} /><span>Додати до порівняння</span></label>
-      <Button type="button" onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути постачальника<ArrowRight size={16} /></Button>
+      <Button size="sm" type="button" onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути<ArrowRight size={14} /></Button>
     </div>
   </article>;
 }

@@ -1,4 +1,4 @@
-export type Language = 'en' | 'ua';
+export type Language = 'en' | 'uk';
 type CardCopy = { title: string; text: string };
 type FaqCopy = CardCopy & { question: string };
 type LandingCopy = {
@@ -34,7 +34,7 @@ export const copy: Record<Language, LandingCopy> = {
     cta:{title:'Find a supplier for your business',text:'Describe what you need and start finding suppliers more easily.',button:'Find a supplier'},
     footer:{tagline:'Finding suppliers is about to get easier',copyright:'© 2026 Supplier Match AI. All rights reserved.'}
   },
-  ua: {
+  uk: {
     nav:{features:'Функції',how:'Як це працює',faq:'FAQ',login:'Увійти',signup:'Зареєструватися'},
     hero:{title:'Знаходьте постачальників без годин пошуку',text:'Опишіть, що вам потрібно, а Supplier Match AI знайде та допоможе порівняти релевантних постачальників.',primary:'Знайти постачальника',secondary:'Як це працює'},
     intro:{title:'Менше пошуку. Більше впевненості у виборі.',text:'Не витрачайте вечори на десятки сайтів, таблиці та дзвінки. Опишіть, що вам потрібно, а Supplier Match AI допоможе знайти релевантні варіанти та зібрати важливу інформацію для порівняння.'},
