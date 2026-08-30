@@ -66,7 +66,7 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
     </div>
     <div className={styles.supplierActions}>
       <label htmlFor={checkboxId}><Checkbox id={checkboxId} checked={isSelected} onCheckedChange={(checked: boolean | 'indeterminate') => onCompareChange(supplier.name, checked === true)} /><span>Додати до порівняння</span></label>
-      <Button size="sm" type="button" onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути<ArrowRight size={14} /></Button>
+      <Button type="button" onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути постачальника<ArrowRight size={16} /></Button>
     </div>
   </article>;
 }

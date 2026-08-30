@@ -81,7 +81,7 @@ export function CompareScreen({ selectedSupplierNames, setSelectedSupplierNames 
           </div>)}
           <div className={styles.actionsRow}>
             <div aria-hidden="true" />
-            {selectedSuppliers.map(supplier => <Button type="button" key={supplier.name} onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути</Button>)}
+            {selectedSuppliers.map(supplier => <Button size="sm" type="button" key={supplier.name} onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути</Button>)}
           </div>
         </div>
       </section>
