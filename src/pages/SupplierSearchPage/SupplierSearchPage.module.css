@@ -53,16 +53,6 @@
 .criteria > div:last-child { border-bottom: 0; }
 .criteria dt { color: #758196; font-size: 12px; line-height: 1.35; }
 .criteria dd { min-width: 0; color: #263248; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
-.statusIcon { position: relative; display: inline-grid; width: 18px; height: 18px; place-items: center; justify-self: end; border-radius: 50%; cursor: help; }
-.statusIcon:focus-visible { outline: 2px solid #7c74f2; outline-offset: 2px; }
-.statusIcon::after { position: absolute; z-index: 20; right: 0; bottom: calc(100% + 7px); padding: 5px 7px; border-radius: 5px; color: #fff; background: #283142; box-shadow: 0 3px 10px rgb(20 28 45 / 18%); content: attr(data-tooltip); font-size: 11px; font-weight: 500; line-height: 1.2; white-space: nowrap; opacity: 0; pointer-events: none; transform: translateY(2px); transition: opacity 120ms ease, transform 120ms ease; }
-.statusIcon:hover::after, .statusIcon:focus-visible::after { opacity: 1; transform: translateY(0); }
-.statusIcon svg { width: 13px; height: 13px; stroke-width: 2.5; }
-.statusIcon.success { color: #16804b; background: #e9f8f0; }
-.statusIcon.partial { color: #c97912; background: #fff3dc; }
-.statusIcon.partial > span { font-size: 15px; font-weight: 700; line-height: 1; transform: translateY(-1px); }
-.statusIcon.failure { color: #c73737; background: #fdecec; }
-.statusIcon.unknown { color: #687386; background: #f0f2f5; }
 .supplierActions { display: grid; min-width: 0; gap: 12px; }
 .supplierActions label { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 8px; color: #455167; font-size: 13px; line-height: 1.35; cursor: pointer; }
 .supplierActions label button { width: 16px; height: 16px; flex: 0 0 16px; padding: 0; background: #fff; }

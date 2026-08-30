@@ -5,7 +5,8 @@ import { MapPin, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { CriterionStatusIcon, suppliers, type Supplier } from '@/pages/SupplierSearchPage/SupplierSearchPage';
+import { CriterionStatusIcon } from '@/components/CriterionStatusIcon/CriterionStatusIcon';
+import { suppliers, type Supplier } from '@/data/suppliers';
 import styles from './CompareScreen.module.css';
 
 type CompareScreenProps = {
@@ -79,7 +80,7 @@ export function CompareScreen({ selectedSupplierNames, setSelectedSupplierNames 
           </div>)}
           <div className={styles.actionsRow}>
             <div aria-hidden="true" />
-            {selectedSuppliers.map(supplier => <Button type="button" key={supplier.name}>Переглянути</Button>)}
+            {selectedSuppliers.map(supplier => <Button type="button" key={supplier.name} onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути</Button>)}
           </div>
         </div>
       </section>
@@ -112,8 +113,8 @@ export function CompareScreen({ selectedSupplierNames, setSelectedSupplierNames 
           </div>)}
         </div>
         <div className={styles.mobileActions}>
-          <Button type="button">Переглянути</Button>
-          <Button type="button">Переглянути</Button>
+          <Button type="button" onClick={() => navigate(`/app/suppliers/${firstMobileSupplier.id}`)}>Переглянути</Button>
+          <Button type="button" onClick={() => navigate(`/app/suppliers/${secondMobileSupplier.id}`)}>Переглянути</Button>
         </div>
       </section>}
     </main>

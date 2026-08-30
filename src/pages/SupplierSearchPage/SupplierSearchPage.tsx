@@ -6,49 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { Box, Check, ChevronDown, CircleHelp, MapPin, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { suppliers, type Supplier } from '@/data/suppliers';
+import { CriterionStatusIcon } from '@/components/CriterionStatusIcon/CriterionStatusIcon';
+import { Box, ChevronDown, MapPin, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
 
 export type SearchStage = 'idle' | 'loading' | 'clarification' | 'search-ready';
-export type CriterionStatus = 'Відповідає' | 'Частково відповідає' | 'Не відповідає' | 'Немає даних';
-
-export type Supplier = {
-  name: string;
-  location: string;
-  match: string;
-  breakdown: string;
-  updatedAt: string;
-  criteria: { label: string; value: string; status: CriterionStatus }[];
-};
-
-export const suppliers: Supplier[] = [
-  { name: 'Coffee Trade Ukraine', location: 'Київ, Україна', match: '92% Match', breakdown: '3 критерії відповідають · 1 частково', updatedAt: '12 серпня 2026', criteria: [
-    { label: 'Товар', value: 'кава та кавова продукція', status: 'Відповідає' }, { label: 'Регіон доставки', value: 'Україна', status: 'Відповідає' }, { label: 'MOQ', value: 'від 10 кг', status: 'Відповідає' }, { label: 'Ціна', value: 'від 320 грн/кг', status: 'Частково відповідає' },
-  ] },
-  { name: 'Bean Supply Europe', location: 'Львів, Україна', match: '78% Match', breakdown: '2 критерії відповідають · 2 частково', updatedAt: '8 серпня 2026', criteria: [
-    { label: 'Товар', value: 'кава в зернах', status: 'Відповідає' }, { label: 'Регіон доставки', value: 'Україна', status: 'Відповідає' }, { label: 'MOQ', value: 'від 50 кг', status: 'Частково відповідає' }, { label: 'Ціна', value: 'від 290 грн/кг', status: 'Частково відповідає' },
-  ] },
-  { name: 'Roast Partners', location: 'Краків, Польща', match: '64% Match', breakdown: '2 критерії відповідають · 2 без даних', updatedAt: '28 липня 2026', criteria: [
-    { label: 'Товар', value: 'кава та обсмажене зерно', status: 'Відповідає' }, { label: 'Регіон доставки', value: 'Україна', status: 'Відповідає' }, { label: 'MOQ', value: 'Не вказано', status: 'Немає даних' }, { label: 'Ціна', value: 'Не вказано', status: 'Немає даних' },
-  ] },
-  { name: 'Nordic Coffee Supply', location: 'Варшава, Польща', match: '71% Match', breakdown: '2 критерії відповідають · 1 частково · 1 не відповідає', updatedAt: '20 серпня 2026', criteria: [
-    { label: 'Товар', value: 'кава в зернах', status: 'Відповідає' }, { label: 'Регіон доставки', value: 'Україна', status: 'Відповідає' }, { label: 'MOQ', value: 'від 100 кг', status: 'Частково відповідає' }, { label: 'Ціна', value: 'від 410 грн/кг', status: 'Не відповідає' },
-  ] },
-];
-
-export function CriterionStatusIcon({ status }: { status: CriterionStatus }) {
-  if (status === 'Відповідає') {
-    return <span aria-label={status} className={cn(styles.statusIcon, styles.success)} data-tooltip={status} role="img" tabIndex={0}><Check aria-hidden="true" /></span>;
-  }
-  if (status === 'Частково відповідає') {
-    return <span aria-label={status} className={cn(styles.statusIcon, styles.partial)} data-tooltip={status} role="img" tabIndex={0}><span aria-hidden="true">~</span></span>;
-  }
-  if (status === 'Не відповідає') {
-    return <span aria-label={status} className={cn(styles.statusIcon, styles.failure)} data-tooltip={status} role="img" tabIndex={0}><X aria-hidden="true" /></span>;
-  }
-  return <span aria-label={status} className={cn(styles.statusIcon, styles.unknown)} data-tooltip={status} role="img" tabIndex={0}><CircleHelp aria-hidden="true" /></span>;
-}
-
 function Filters() {
   return <div className={styles.filterFields}>
     <label><span>Категорія</span><Select defaultValue="coffee"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="coffee">Кава</SelectItem><SelectItem value="grocery">Бакалія</SelectItem></SelectContent></Select></label>
@@ -65,6 +28,7 @@ type SupplierCardProps = {
 };
 
 function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardProps) {
+  const navigate = useNavigate();
   const checkboxId = `compare-${supplier.name.toLowerCase().replace(/\s+/g, '-')}`;
   const score = supplier.match.split('%')[0];
   return <article className={cn(styles.supplierCard, isSelected && styles.supplierCardSelected)}>
@@ -84,7 +48,7 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
     </div>
     <div className={styles.supplierActions}>
       <label htmlFor={checkboxId}><Checkbox id={checkboxId} checked={isSelected} onCheckedChange={(checked: boolean | 'indeterminate') => onCompareChange(supplier.name, checked === true)} /><span>Додати до порівняння</span></label>
-      <Button type="button">Переглянути</Button>
+      <Button type="button" onClick={() => navigate(`/app/suppliers/${supplier.id}`)}>Переглянути</Button>
     </div>
   </article>;
 }
