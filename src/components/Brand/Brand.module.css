@@ -1,0 +1,28 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  color: #182033;
+  font-family: Inter, sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.mark {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  margin-right: 9px;
+  place-items: center;
+  border-radius: 9px;
+  color: #fff;
+  background: linear-gradient(135deg, #2563eb, #6d4aff);
+  font-size: 11px;
+}
+
+.brand b {
+  margin-left: 4px;
+  color: #2563eb;
+}

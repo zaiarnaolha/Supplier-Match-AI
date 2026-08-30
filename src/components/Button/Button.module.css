@@ -1,5 +1,0 @@
-.button{display:inline-flex;align-items:center;justify-content:center;border-radius:var(--radius-small);font-size:13px;font-weight:600;line-height:1.2;cursor:pointer;white-space:nowrap;transition:background-color .2s,color .2s,border-color .2s}
-.small{min-height:32px;padding:0 var(--spacing-4)}.medium{min-height:42px;padding:0 var(--spacing-6)}.large{min-height:46px;padding:0 var(--spacing-8)}
-.primary{color:var(--semantic-text-on-primary);background:var(--semantic-action-primary)}.primary:hover{background:var(--semantic-action-primary-hover)}
-.secondary{color:var(--semantic-text-primary);background:var(--semantic-surface-default);border:1px solid var(--semantic-border-default)}.secondary:hover{background:var(--semantic-surface-subtle)}
-.ghost{color:var(--semantic-text-muted);background:transparent}.ghost:hover{color:var(--semantic-text-primary)}

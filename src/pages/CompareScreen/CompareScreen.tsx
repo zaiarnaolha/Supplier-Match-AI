@@ -2,6 +2,7 @@ import '../../styles/shadcn.css';
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MapPin, X } from 'lucide-react';
+import { Brand } from '@/components/Brand/Brand';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
@@ -56,7 +57,7 @@ export function CompareScreen({ selectedSupplierNames, setSelectedSupplierNames 
 
   return <div className={cn('shadcn', styles.page)}>
     <header className={styles.siteHeader}><div className={styles.siteHeaderInner}>
-      <Link className={styles.brand} to="/app"><span>SM</span>Supplier Match <b>AI</b></Link>
+      <Link to="/app" aria-label="Supplier Match AI"><Brand /></Link>
     </div></header>
     <main className={styles.main}>
       <Link className={styles.backLink} to="/app">← Назад до результатів</Link>
