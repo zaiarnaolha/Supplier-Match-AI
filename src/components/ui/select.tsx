@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
+import { cva, type VariantProps } from 'class-variance-authority';
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -7,7 +8,14 @@ export const Select = SelectPrimitive.Root;
 export const SelectGroup = SelectPrimitive.Group;
 export const SelectValue = SelectPrimitive.Value;
 
-export function SelectTrigger({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Trigger>) { return <SelectPrimitive.Trigger data-slot="select-trigger" className={cn('flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1', className)} {...props}>{children}<SelectPrimitive.Icon asChild><ChevronDownIcon className="size-4 opacity-50" /></SelectPrimitive.Icon></SelectPrimitive.Trigger>; }
+const selectTriggerVariants = cva(
+  'flex w-full items-center justify-between rounded-md border border-input bg-transparent py-2 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1',
+  { variants: { size: { default: 'h-9 px-3', sm: 'h-8 px-3' } }, defaultVariants: { size: 'default' } },
+);
+
+type SelectTriggerProps = ComponentProps<typeof SelectPrimitive.Trigger> & VariantProps<typeof selectTriggerVariants>;
+
+export function SelectTrigger({ className, children, size, ...props }: SelectTriggerProps) { return <SelectPrimitive.Trigger data-slot="select-trigger" className={cn(selectTriggerVariants({ size }), className)} {...props}>{children}<SelectPrimitive.Icon asChild><ChevronDownIcon className="size-4 opacity-50" /></SelectPrimitive.Icon></SelectPrimitive.Trigger>; }
 export function SelectContent({ className, children, position = 'popper', ...props }: ComponentProps<typeof SelectPrimitive.Content>) { return <SelectPrimitive.Portal><SelectPrimitive.Content data-slot="select-content" className={cn('shadcn relative z-[100] max-h-96 overflow-hidden rounded-md border bg-background text-foreground opacity-100 shadow-md', position === 'popper' && 'w-[var(--radix-select-trigger-width)] data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1', className)} position={position} {...props}><SelectPrimitive.ScrollUpButton className="flex items-center justify-center py-1"><ChevronUpIcon className="size-4" /></SelectPrimitive.ScrollUpButton><SelectPrimitive.Viewport className="w-full p-1">{children}</SelectPrimitive.Viewport><SelectPrimitive.ScrollDownButton className="flex items-center justify-center py-1"><ChevronDownIcon className="size-4" /></SelectPrimitive.ScrollDownButton></SelectPrimitive.Content></SelectPrimitive.Portal>; }
 export function SelectLabel({ className, ...props }: ComponentProps<typeof SelectPrimitive.Label>) { return <SelectPrimitive.Label data-slot="select-label" className={cn('px-2 py-1.5 text-sm font-semibold', className)} {...props} />; }
 export function SelectItem({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Item>) { return <SelectPrimitive.Item data-slot="select-item" className={cn('relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50', className)} {...props}><span className="absolute right-2 flex size-3.5 items-center justify-center"><SelectPrimitive.ItemIndicator><CheckIcon className="size-4" /></SelectPrimitive.ItemIndicator></span><SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText></SelectPrimitive.Item>; }
