@@ -15,10 +15,10 @@
 .clarification { display: grid; grid-template-columns: 1fr 220px auto; align-items: center; gap: 14px; margin-top: 14px; padding: 14px; border: 1px solid #e2e6f0; border-radius: 10px; background: #f8f9fd; }
 .clarification strong { font-size: 13px; }
 .clarification p { margin-top: 3px; color: #778197; font-size: 12px; }
-.neutralSelect, .filterFields button { border: 1px solid #d7dde7; color: #263248; background: #fff !important; box-shadow: 0 1px 3px rgb(30 48 80 / 7%); }
-.neutralSelect:hover, .neutralSelect[data-state="open"], .filterFields button:hover, .filterFields button[data-state="open"] { color: #263248; background: #f9fafc !important; }
-.neutralSelect:focus, .neutralSelect:focus-visible, .filterFields button:focus-visible { border-color: #a8b2ec; color: #263248; background: #fff !important; box-shadow: 0 0 0 3px rgb(79 70 229 / 10%); }
-.neutralSelect svg, .filterFields button svg { color: #667085; opacity: 1; }
+.neutralSelect { border: 1px solid #d7dde7; color: #263248; background: #fff !important; box-shadow: 0 1px 3px rgb(30 48 80 / 7%); }
+.neutralSelect:hover, .neutralSelect[data-state="open"] { color: #263248; background: #f9fafc !important; }
+.neutralSelect:focus, .neutralSelect:focus-visible { border-color: #a8b2ec; color: #263248; background: #fff !important; box-shadow: 0 0 0 3px rgb(79 70 229 / 10%); }
+.neutralSelect svg { color: #667085; opacity: 1; }
 .resultsLayout { display: grid; grid-template-columns: 270px minmax(0, 1fr); align-items: start; gap: 20px; margin-top: 26px; }
 .filters { padding: 20px; }
 .filterTitle { display: flex; align-items: center; gap: 9px; margin-bottom: 18px; }
@@ -26,8 +26,8 @@
 .filterFields { display: grid; gap: 20px; }
 .filterFields label { min-width: 0; }
 .filterFields label > span { display: block; margin-bottom: 9px; color: #4a556b; font-size: 12px; font-weight: 500; }
-.filterFields button { width: 100%; min-width: 0; min-height: 44px; padding-inline: 13px; border-radius: 9px; font-size: 13px; }
-.filterFields .clearFilters { margin-top: -4px; color: #4f46e5; }
+.filterFields [data-slot="select-trigger"] { min-width: 0; }
+.filterFields .clearFilters { width: 100%; margin-top: -4px; color: #4f46e5; }
 .resultsCard { width: 100%; min-width: 0; padding: 20px; }
 .resultsHeader { margin-bottom: 16px; }
 .resultsHeader h2 { font-family: Inter, sans-serif; font-size: 16px; letter-spacing: -.01em; }
