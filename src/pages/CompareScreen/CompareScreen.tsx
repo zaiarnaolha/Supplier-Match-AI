@@ -1,7 +1,7 @@
 import '../../styles/shadcn.css';
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MapPin, X } from 'lucide-react';
+import { ArrowRight, MapPin, X } from 'lucide-react';
 import { Brand } from '@/components/Brand/Brand';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -114,8 +114,15 @@ export function CompareScreen({ selectedSupplierNames, setSelectedSupplierNames 
           </div>)}
         </div>
         <div className={styles.mobileActions}>
-          <Button type="button" onClick={() => navigate(`/app/suppliers/${firstMobileSupplier.id}`)}>Переглянути</Button>
-          <Button type="button" onClick={() => navigate(`/app/suppliers/${secondMobileSupplier.id}`)}>Переглянути</Button>
+          {[firstMobileSupplier, secondMobileSupplier].map(supplier => <Button
+            type="button"
+            key={supplier.id}
+            aria-label={`Переглянути ${supplier.name}`}
+            onClick={() => navigate(`/app/suppliers/${supplier.id}`)}
+          >
+            <span className={styles.mobileActionText}>Переглянути</span>
+            <ArrowRight className={styles.mobileActionIcon} aria-hidden="true" />
+          </Button>)}
         </div>
       </section>}
     </main>

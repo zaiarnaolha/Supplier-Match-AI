@@ -40,5 +40,12 @@
   --container-width: 980px;
   --content-width: 680px;
   --header-height: 60px;
-  --mobile-breakpoint: 720px;
+  /*
+   * Canonical responsive scale. CSS Modules repeat these values as literals
+   * because custom properties cannot be used in media-query conditions.
+   */
+  --breakpoint-wide-desktop: 1200px;
+  --breakpoint-tablet: 900px;
+  --breakpoint-mobile: 720px;
+  --breakpoint-narrow-mobile: 480px;
 }
