@@ -15,6 +15,7 @@
 .clarification { display: grid; grid-template-columns: 1fr 220px auto; align-items: center; gap: 14px; margin-top: 14px; padding: 14px; border: 1px solid #e2e6f0; border-radius: 10px; background: #f8f9fd; }
 .clarification strong { font-size: 13px; }
 .clarification p { margin-top: 3px; color: #778197; font-size: 12px; }
+.searchError { margin-top: 14px; color: #b42318; font-size: 13px; font-weight: 500; line-height: 1.4; }
 .neutralSelect { border: 1px solid #d7dde7; color: #263248; background: #fff !important; box-shadow: 0 1px 3px rgb(30 48 80 / 7%); }
 .neutralSelect:hover, .neutralSelect[data-state="open"] { color: #263248; background: #f9fafc !important; }
 .neutralSelect:focus, .neutralSelect:focus-visible { border-color: #a8b2ec; color: #263248; background: #fff !important; box-shadow: 0 0 0 3px rgb(79 70 229 / 10%); }
