@@ -5,11 +5,11 @@ import { Brand } from '@/components/Brand/Brand';
 import { CriterionStatusIcon } from '@/components/CriterionStatusIcon/CriterionStatusIcon';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { suppliers } from '@/data/suppliers';
+import type { Supplier } from '@/data/suppliers';
 import { cn } from '@/lib/utils';
 import styles from './SupplierDetailsPage.module.css';
 
-export function SupplierDetailsPage() {
+export function SupplierDetailsPage({ suppliers }: { suppliers: Supplier[] }) {
   const { id } = useParams();
   const supplier = suppliers.find(item => item.id === id);
   if (!supplier) return <Navigate to="/app" replace />;

@@ -7,10 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { CriterionStatusIcon } from '@/components/CriterionStatusIcon/CriterionStatusIcon';
-import { suppliers, type Supplier } from '@/data/suppliers';
+import type { Supplier } from '@/data/suppliers';
 import styles from './CompareScreen.module.css';
 
 type CompareScreenProps = {
+  suppliers: Supplier[];
   selectedSupplierNames: string[];
   setSelectedSupplierNames: Dispatch<SetStateAction<string[]>>;
 };
@@ -31,7 +32,7 @@ function SupplierHeading({ supplier, onRemove, compact = false }: { supplier: Su
   </div>;
 }
 
-export function CompareScreen({ selectedSupplierNames, setSelectedSupplierNames }: CompareScreenProps) {
+export function CompareScreen({ suppliers, selectedSupplierNames, setSelectedSupplierNames }: CompareScreenProps) {
   const navigate = useNavigate();
   const selectedSuppliers = selectedSupplierNames
     .map(name => suppliers.find(supplier => supplier.name === name))

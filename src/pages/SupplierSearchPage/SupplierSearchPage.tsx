@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { suppliers, type Supplier } from '@/data/suppliers';
+import type { Supplier } from '@/data/suppliers';
 import { CriterionStatusIcon } from '@/components/CriterionStatusIcon/CriterionStatusIcon';
 import { Box, ChevronDown, MapPin, RotateCcw, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
@@ -73,6 +73,51 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
 
 function isSpecificRequest(query: string) { return query.trim().length >= 25 && query.trim().split(/\s+/).length >= 5; }
 
+type SearchResult = {
+  title: string;
+  url: string;
+  content: string;
+  score: number;
+};
+
+function isSearchResult(value: unknown): value is SearchResult {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const result = value as Record<string, unknown>;
+  return typeof result.title === 'string'
+    && typeof result.url === 'string'
+    && typeof result.content === 'string'
+    && typeof result.score === 'number'
+    && Number.isFinite(result.score);
+}
+
+function mapSearchResult(result: SearchResult, index: number): Supplier {
+  let hostname = 'supplier';
+  try {
+    hostname = new URL(result.url).hostname.replace(/^www\./, '') || hostname;
+  } catch {
+    // The API validates the field type, while the original URL remains available below.
+  }
+
+  const relevance = Math.round(Math.max(0, Math.min(1, result.score)) * 100);
+  return {
+    id: `${index}-${hostname.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`,
+    name: result.title,
+    location: 'Не вказано',
+    match: `${relevance}% Match`,
+    breakdown: 'Структуровані критерії недоступні',
+    updatedAt: 'Не вказано',
+    description: result.content,
+    website: result.url,
+    email: '',
+    phone: '',
+    criteria: ['Товар', 'Регіон доставки', 'MOQ', 'Ціна'].map(label => ({
+      label,
+      value: 'Не вказано',
+      status: 'Немає даних' as const,
+    })),
+  };
+}
+
 type SupplierSearchPageProps = {
   query: string;
   setQuery: Dispatch<SetStateAction<string>>;
@@ -84,15 +129,67 @@ type SupplierSearchPageProps = {
   setSelectedSuppliers: Dispatch<SetStateAction<string[]>>;
   showCompareLimit: boolean;
   setShowCompareLimit: Dispatch<SetStateAction<boolean>>;
+  searchResults: Supplier[];
+  setSearchResults: Dispatch<SetStateAction<Supplier[]>>;
 };
 
-export function SupplierSearchPage({ query, setQuery, stage, setStage, deliveryRegion, setDeliveryRegion, selectedSuppliers, setSelectedSuppliers, showCompareLimit, setShowCompareLimit }: SupplierSearchPageProps) {
+export function SupplierSearchPage({ query, setQuery, stage, setStage, deliveryRegion, setDeliveryRegion, selectedSuppliers, setSelectedSuppliers, showCompareLimit, setShowCompareLimit, searchResults, setSearchResults }: SupplierSearchPageProps) {
   const navigate = useNavigate();
-  const loadingTimer = useRef<number | null>(null);
-  useEffect(() => () => { if (loadingTimer.current !== null) window.clearTimeout(loadingTimer.current); }, []);
+  const requestController = useRef<AbortController | null>(null);
+  const [searchError, setSearchError] = useState('');
+  useEffect(() => () => requestController.current?.abort(), []);
+
+  async function searchSuppliers(region: string, errorStage: SearchStage) {
+    const controller = new AbortController();
+    requestController.current?.abort();
+    requestController.current = controller;
+    setSearchError('');
+    setStage('loading');
+
+    try {
+      const response = await fetch('/api/search-suppliers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query.trim(), deliveryRegion: region }),
+        signal: controller.signal,
+      });
+      let data: unknown;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error('Сервіс пошуку повернув некоректну відповідь.');
+      }
+      if (!response.ok) {
+        throw new Error('Не вдалося виконати пошук постачальників. Спробуйте ще раз.');
+      }
+      if (data === null || typeof data !== 'object' || Array.isArray(data)) throw new Error('Сервіс пошуку повернув некоректну відповідь.');
+      const results = (data as Record<string, unknown>).results;
+      if (!Array.isArray(results) || !results.every(isSearchResult)) throw new Error('Сервіс пошуку повернув некоректну відповідь.');
+
+      setSearchResults(results.map(mapSearchResult));
+      setSelectedSuppliers([]);
+      setShowCompareLimit(false);
+      setStage('search-ready');
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setSearchResults([]);
+      setSelectedSuppliers([]);
+      setShowCompareLimit(false);
+      setSearchError(error instanceof Error ? error.message : 'Не вдалося виконати пошук постачальників. Спробуйте ще раз.');
+      setStage(errorStage);
+    } finally {
+      if (requestController.current === controller) requestController.current = null;
+    }
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!query.trim() || stage === 'loading') return;
-    setStage('loading'); loadingTimer.current = window.setTimeout(() => { setStage(isSpecificRequest(query) ? 'search-ready' : 'clarification'); loadingTimer.current = null; }, 700);
+    setSearchError('');
+    if (!isSpecificRequest(query)) {
+      setStage('clarification');
+      return;
+    }
+    void searchSuppliers(deliveryRegion, 'idle');
   }
   function handleCompareChange(supplierName: string, shouldSelect: boolean) {
     if (!shouldSelect) {
@@ -124,16 +221,17 @@ export function SupplierSearchPage({ query, setQuery, stage, setStage, deliveryR
         {stage === 'clarification' && <div className={styles.clarification}>
           <div><strong>Уточніть регіон доставки</strong><p>Це допоможе знайти релевантніші варіанти.</p></div>
           <Select value={deliveryRegion} onValueChange={setDeliveryRegion}><SelectTrigger size="sm" className={styles.neutralSelect} aria-label="Регіон отримання товару"><SelectValue placeholder="Оберіть регіон" /></SelectTrigger><SelectContent><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem><SelectItem value="asia">Азія</SelectItem><SelectItem value="anywhere">Будь-яка країна</SelectItem></SelectContent></Select>
-          <Button size="sm" type="button" disabled={!deliveryRegion} onClick={() => setStage('search-ready')}>Продовжити пошук</Button>
+          <Button size="sm" type="button" disabled={!deliveryRegion} onClick={() => void searchSuppliers(deliveryRegion, 'clarification')}>Продовжити пошук</Button>
         </div>}
+        {searchError && <p className={styles.searchError} role="alert">{searchError}</p>}
       </section>
 
       {stage === 'search-ready' && <section className={styles.resultsLayout} aria-labelledby="search-results-title" aria-live="polite">
         <aside className={styles.filters}><div className={styles.filterTitle}><SlidersHorizontal size={17}/><h2>Фільтри</h2></div><Filters /></aside>
         <details className={styles.mobileFilters}><summary><span><SlidersHorizontal size={17}/>Фільтри</span><ChevronDown size={18}/></summary><Filters /></details>
         <div className={styles.resultsCard}>
-          <div className={styles.resultsHeader}><h2 id="search-results-title">Результати пошуку</h2><p>Кава · Україна <span>· Знайдено постачальників: {suppliers.length}</span></p></div>
-          <div className={styles.supplierList}>{suppliers.map(supplier => <SupplierCard key={supplier.name} supplier={supplier} isSelected={selectedSuppliers.includes(supplier.name)} onCompareChange={handleCompareChange} />)}</div>
+          <div className={styles.resultsHeader}><h2 id="search-results-title">Результати пошуку</h2><p>{query}{deliveryRegion && ` · ${deliveryRegion}`} <span>· Знайдено постачальників: {searchResults.length}</span></p></div>
+          <div className={styles.supplierList}>{searchResults.map(supplier => <SupplierCard key={supplier.id} supplier={supplier} isSelected={selectedSuppliers.includes(supplier.name)} onCompareChange={handleCompareChange} />)}</div>
           {showCompareLimit && <p className={styles.compareLimit} role="status">Для порівняння можна обрати до 3 постачальників</p>}
           {selectedSuppliers.length >= 2 && <div className={styles.compareBar} aria-label={`Обрано постачальників: ${selectedSuppliers.length}`}>
             <div><strong>Обрано для порівняння</strong><span>{selectedSuppliers.length} з 3 постачальників</span></div>
