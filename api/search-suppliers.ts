@@ -9,6 +9,17 @@ interface SearchSuppliersBody {
   deliveryRegion?: unknown;
 }
 
+interface VercelRequest {
+  method?: string;
+  body?: unknown;
+}
+
+interface VercelResponse {
+  status(statusCode: number): VercelResponse;
+  setHeader(name: string, value: string): VercelResponse;
+  json(body: unknown): void;
+}
+
 interface TavilyResult {
   title: string;
   url: string;
@@ -32,55 +43,51 @@ function isTavilyResult(value: unknown): value is TavilyResult {
   );
 }
 
-export default async function handler(request: Request): Promise<Response> {
+export default async function handler(
+  request: VercelRequest,
+  response: VercelResponse,
+): Promise<void> {
   if (request.method !== "POST") {
-    return Response.json(
-      { error: "Method not allowed. Use POST." },
-      { status: 405, headers: { Allow: "POST" } },
-    );
+    response.setHeader("Allow", "POST");
+    response.status(405).json({ error: "Method not allowed. Use POST." });
+    return;
   }
 
-  let body: unknown;
+  let body = request.body;
 
-  try {
-    body = await request.json();
-  } catch {
-    return Response.json(
-      { error: "Request body must be valid JSON." },
-      { status: 400 },
-    );
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body) as unknown;
+    } catch {
+      response.status(400).json({ error: "Request body must be valid JSON." });
+      return;
+    }
   }
 
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
-    return Response.json(
-      { error: "Request body must be a JSON object." },
-      { status: 400 },
-    );
+    response.status(400).json({ error: "Request body must be a JSON object." });
+    return;
   }
 
   const { query, deliveryRegion } = body as SearchSuppliersBody;
 
   if (typeof query !== "string" || query.trim().length === 0) {
-    return Response.json(
-      { error: 'The "query" field must be a non-empty string.' },
-      { status: 400 },
-    );
+    response.status(400).json({ error: 'The "query" field must be a non-empty string.' });
+    return;
   }
 
   if (typeof deliveryRegion !== "string") {
-    return Response.json(
-      { error: 'The "deliveryRegion" field must be a string.' },
-      { status: 400 },
-    );
+    response.status(400).json({ error: 'The "deliveryRegion" field must be a string.' });
+    return;
   }
 
   const apiKey = process.env.TAVILY_API_KEY;
 
   if (!apiKey) {
-    return Response.json(
-      { error: "Server configuration error: TAVILY_API_KEY is not set." },
-      { status: 500 },
-    );
+    response.status(500).json({
+      error: "Server configuration error: TAVILY_API_KEY is not set.",
+    });
+    return;
   }
 
   const normalizedQuery = query.trim();
@@ -113,17 +120,17 @@ export default async function handler(request: Request): Promise<Response> {
       }),
     });
   } catch {
-    return Response.json(
-      { error: "Supplier search service is currently unavailable." },
-      { status: 502 },
-    );
+    response.status(502).json({
+      error: "Supplier search service is currently unavailable.",
+    });
+    return;
   }
 
   if (!tavilyResponse.ok) {
-    return Response.json(
-      { error: "Supplier search service returned an error." },
-      { status: 502 },
-    );
+    response.status(502).json({
+      error: "Supplier search service returned an error.",
+    });
+    return;
   }
 
   let tavilyData: unknown;
@@ -131,33 +138,33 @@ export default async function handler(request: Request): Promise<Response> {
   try {
     tavilyData = await tavilyResponse.json();
   } catch {
-    return Response.json(
-      { error: "Supplier search service returned an invalid response." },
-      { status: 502 },
-    );
+    response.status(502).json({
+      error: "Supplier search service returned an invalid response.",
+    });
+    return;
   }
 
   if (tavilyData === null || typeof tavilyData !== "object" || Array.isArray(tavilyData)) {
-    return Response.json(
-      { error: "Supplier search service returned an unexpected response." },
-      { status: 502 },
-    );
+    response.status(502).json({
+      error: "Supplier search service returned an unexpected response.",
+    });
+    return;
   }
 
   const tavilyResults = (tavilyData as Record<string, unknown>).results;
 
   if (!Array.isArray(tavilyResults) || !tavilyResults.every(isTavilyResult)) {
-    return Response.json(
-      { error: "Supplier search service returned an unexpected response." },
-      { status: 502 },
-    );
+    response.status(502).json({
+      error: "Supplier search service returned an unexpected response.",
+    });
+    return;
   }
 
   const results = tavilyResults.map(
     ({ title, url, content, score }) => ({ title, url, content, score }),
   );
 
-  return Response.json({
+  response.status(200).json({
     query: normalizedQuery,
     deliveryRegion: normalizedDeliveryRegion,
     results,
