@@ -1,4 +1,4 @@
-import { extractSupplierFields } from "./supplier-extraction.ts";
+import { extractSupplierFields } from "./supplier-extraction";
 
 declare const process: {
   env: {
