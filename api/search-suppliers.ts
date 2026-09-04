@@ -190,6 +190,15 @@ export default async function handler(
   const requestId = diagnosticsEnabled
     ? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
     : null;
+  const diagnosticResults: Array<{
+    resultIndex: number;
+    title: string;
+    url: string;
+    qualified: boolean;
+    reason: string | null;
+    confidence: "high" | "medium" | null;
+    evidence: string[];
+  }> = [];
   let qualifiedResultCount = 0;
 
   for (const [resultIndex, { title, url, content, score }] of tavilyResults.entries()) {
@@ -197,24 +206,20 @@ export default async function handler(
 
     if (diagnosticsEnabled) {
       if ("reason" in qualification) {
-        console.info("supplier_search_qualification", {
-          requestId,
+        diagnosticResults.push({
           resultIndex,
           title,
           url,
-          content,
           qualified: false,
           reason: qualification.reason,
           confidence: null,
           evidence: [],
         });
       } else {
-        console.info("supplier_search_qualification", {
-          requestId,
+        diagnosticResults.push({
           resultIndex,
           title,
           url,
-          content,
           qualified: true,
           reason: null,
           confidence: qualification.confidence,
@@ -244,11 +249,15 @@ export default async function handler(
   }
 
   if (diagnosticsEnabled) {
-    console.info("supplier_search_summary", {
+    console.info("supplier_search_diagnostics", {
+      event: "supplier_search_diagnostics",
       requestId,
-      rawResultCount: tavilyResults.length,
-      qualifiedResultCount,
-      returnedResultCount: results.length,
+      results: diagnosticResults,
+      summary: {
+        rawResultCount: tavilyResults.length,
+        qualifiedResultCount,
+        returnedResultCount: results.length,
+      },
     });
   }
 
