@@ -196,17 +196,31 @@ export default async function handler(
     const qualification = qualifySupplierCandidate(title, content, url);
 
     if (diagnosticsEnabled) {
-      console.info("supplier_search_qualification", {
-        requestId,
-        resultIndex,
-        title,
-        url,
-        content,
-        qualified: qualification.qualified,
-        reason: qualification.qualified ? null : qualification.reason,
-        confidence: qualification.qualified ? qualification.confidence : null,
-        evidence: qualification.qualified ? qualification.evidence : [],
-      });
+      if (qualification.qualified) {
+        console.info("supplier_search_qualification", {
+          requestId,
+          resultIndex,
+          title,
+          url,
+          content,
+          qualified: true,
+          reason: null,
+          confidence: qualification.confidence,
+          evidence: qualification.evidence,
+        });
+      } else {
+        console.info("supplier_search_qualification", {
+          requestId,
+          resultIndex,
+          title,
+          url,
+          content,
+          qualified: false,
+          reason: qualification.reason,
+          confidence: null,
+          evidence: [],
+        });
+      }
     }
 
     if (!qualification.qualified) continue;
