@@ -79,7 +79,9 @@ type SearchResult = {
   content: string;
   score: number;
   product: string | null;
-  location: string | null;
+  country: string | null;
+  moq: string | null;
+  price: string | null;
 };
 
 function isSearchResult(value: unknown): value is SearchResult {
@@ -91,7 +93,9 @@ function isSearchResult(value: unknown): value is SearchResult {
     && typeof result.score === 'number'
     && Number.isFinite(result.score)
     && (typeof result.product === 'string' || result.product === null)
-    && (typeof result.location === 'string' || result.location === null);
+    && (typeof result.country === 'string' || result.country === null)
+    && (typeof result.moq === 'string' || result.moq === null)
+    && (typeof result.price === 'string' || result.price === null);
 }
 
 function mapSearchResult(result: SearchResult, index: number): Supplier {
@@ -106,7 +110,7 @@ function mapSearchResult(result: SearchResult, index: number): Supplier {
   return {
     id: `${index}-${hostname.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`,
     name: result.title,
-    location: result.location ?? 'Не вказано',
+    location: result.country ?? 'Не вказано',
     match: `${relevance}% Match`,
     breakdown: 'Структуровані критерії недоступні',
     updatedAt: 'Не вказано',
@@ -120,11 +124,9 @@ function mapSearchResult(result: SearchResult, index: number): Supplier {
         value: result.product ?? 'Не вказано',
         status: result.product ? 'Відповідає' as const : 'Немає даних' as const,
       },
-      ...['Регіон доставки', 'MOQ', 'Ціна'].map(label => ({
-        label,
-        value: 'Не вказано',
-        status: 'Немає даних' as const,
-      })),
+      { label: 'Регіон доставки', value: result.country ?? 'Не вказано', status: result.country ? 'Відповідає' as const : 'Немає даних' as const },
+      { label: 'MOQ', value: result.moq ?? 'Не вказано', status: result.moq ? 'Відповідає' as const : 'Немає даних' as const },
+      { label: 'Ціна', value: result.price ?? 'Не вказано', status: result.price ? 'Відповідає' as const : 'Немає даних' as const },
     ],
   };
 }

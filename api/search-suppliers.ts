@@ -1,3 +1,5 @@
+import { extractSupplierFields } from "./supplier-extraction.ts";
+
 declare const process: {
   env: {
     TAVILY_API_KEY?: string;
@@ -29,65 +31,9 @@ interface TavilyResult {
 
 interface SupplierSearchResult extends TavilyResult {
   product: string | null;
-  location: string | null;
-}
-
-const PRODUCT_STOP_WORDS = new Set([
-  "actual", "and", "або", "для", "доставка", "доставкою", "доставки", "знайти",
-  "запит", "із", "компанія", "купити", "manufacturer", "manufacturers", "мені",
-  "опт", "оптовик", "оптовики", "потрібен", "потрібна", "потрібні", "постачальник",
-  "постачальника", "постачальники", "постачальників", "продаж", "регіон", "supplier",
-  "suppliers", "виробник", "виробника", "виробники", "дистриб'ютор", "дистриб’ютор",
-  "дистриб'ютора", "дистриб’ютора", "distributor", "distributors", "wholesale",
-  "wholesaler", "wholesalers", "with", "шукаю", "що", "який", "яка", "які",
-]);
-
-function words(value: string): string[] {
-  return value.toLocaleLowerCase().match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu) ?? [];
-}
-
-function extractProduct(
-  query: string,
-  deliveryRegion: string,
-  title: string,
-  content: string,
-): string | null {
-  const excludedWords = new Set([...PRODUCT_STOP_WORDS, ...words(deliveryRegion)]);
-  const sourceWords = new Set(words(`${title} ${content}`));
-  const queryWords = words(query);
-  let bestMatch: string[] = [];
-  let currentMatch: string[] = [];
-
-  for (const word of queryWords) {
-    if (word.length >= 3 && !excludedWords.has(word) && sourceWords.has(word)) {
-      currentMatch.push(word);
-      if (currentMatch.length > bestMatch.length) bestMatch = [...currentMatch];
-    } else {
-      currentMatch = [];
-    }
-  }
-
-  return bestMatch.length > 0 ? bestMatch.join(" ") : null;
-}
-
-function extractLocation(title: string, content: string): string | null {
-  const text = `${title}. ${content}`.replace(/\s+/g, " ");
-  const patterns = [
-    /\b(?:based|located|headquartered)\s+in\s+([^.;|\n]{2,80})/iu,
-    /\b(?:headquarters|location|address)\s*:\s*([^.;|\n]{2,80})/iu,
-    /(?:розташован\p{L}*|базується|знаходиться)\s+(?:у|в)\s+([^.;|\n]{2,80})/iu,
-    /(?:адреса|місцезнаходження)\s*:\s*([^.;|\n]{2,80})/iu,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern)?.[1]
-      ?.split(/\s+(?:and|but|that|which|with|та|але|що|який|яка|яке|які)\s+/iu, 1)[0]
-      .trim()
-      .replace(/[,\s]+$/, "");
-    if (match) return match;
-  }
-
-  return null;
+  country: string | null;
+  moq: string | null;
+  price: string | null;
 }
 
 function hostnameKey(url: string): string {
@@ -241,18 +187,16 @@ export default async function handler(
     if (seenHostnames.has(hostname)) continue;
 
     seenHostnames.add(hostname);
+    const fields = extractSupplierFields(title, content, url);
     results.push({
       title,
       url,
       content,
       score,
-      product: extractProduct(
-        normalizedQuery,
-        normalizedDeliveryRegion,
-        title,
-        content,
-      ),
-      location: extractLocation(title, content),
+      product: fields.product?.value ?? null,
+      country: fields.country?.value ?? null,
+      moq: fields.moq?.value ?? null,
+      price: fields.price?.value ?? null,
     });
   }
 
