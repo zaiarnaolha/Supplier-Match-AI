@@ -78,6 +78,8 @@ type SearchResult = {
   url: string;
   content: string;
   score: number;
+  product: string | null;
+  location: string | null;
 };
 
 function isSearchResult(value: unknown): value is SearchResult {
@@ -87,7 +89,9 @@ function isSearchResult(value: unknown): value is SearchResult {
     && typeof result.url === 'string'
     && typeof result.content === 'string'
     && typeof result.score === 'number'
-    && Number.isFinite(result.score);
+    && Number.isFinite(result.score)
+    && (typeof result.product === 'string' || result.product === null)
+    && (typeof result.location === 'string' || result.location === null);
 }
 
 function mapSearchResult(result: SearchResult, index: number): Supplier {
@@ -102,7 +106,7 @@ function mapSearchResult(result: SearchResult, index: number): Supplier {
   return {
     id: `${index}-${hostname.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`,
     name: result.title,
-    location: 'Не вказано',
+    location: result.location ?? 'Не вказано',
     match: `${relevance}% Match`,
     breakdown: 'Структуровані критерії недоступні',
     updatedAt: 'Не вказано',
@@ -110,11 +114,18 @@ function mapSearchResult(result: SearchResult, index: number): Supplier {
     website: result.url,
     email: '',
     phone: '',
-    criteria: ['Товар', 'Регіон доставки', 'MOQ', 'Ціна'].map(label => ({
-      label,
-      value: 'Не вказано',
-      status: 'Немає даних' as const,
-    })),
+    criteria: [
+      {
+        label: 'Товар',
+        value: result.product ?? 'Не вказано',
+        status: result.product ? 'Відповідає' as const : 'Немає даних' as const,
+      },
+      ...['Регіон доставки', 'MOQ', 'Ціна'].map(label => ({
+        label,
+        value: 'Не вказано',
+        status: 'Немає даних' as const,
+      })),
+    ],
   };
 }
 
