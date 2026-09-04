@@ -1,4 +1,5 @@
 import { extractSupplierFields } from "./supplier-extraction";
+import { qualifySupplierCandidate } from "./supplier-qualification";
 
 declare const process: {
   env: {
@@ -183,6 +184,8 @@ export default async function handler(
   const results: SupplierSearchResult[] = [];
 
   for (const { title, url, content, score } of tavilyResults) {
+    if (!qualifySupplierCandidate(title, content, url).qualified) continue;
+
     const hostname = hostnameKey(url);
     if (seenHostnames.has(hostname)) continue;
 
