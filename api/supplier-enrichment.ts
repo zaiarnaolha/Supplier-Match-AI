@@ -1,4 +1,4 @@
-import { extractMoq, extractPrice, extractProduct, type ExtractedField } from "./supplier-extraction.ts";
+import { extractMoq, extractPrice, extractProduct, type ExtractedField } from "./supplier-extraction";
 
 export type DeliveryStatus = "confirmed" | "not_confirmed" | "not_available";
 
