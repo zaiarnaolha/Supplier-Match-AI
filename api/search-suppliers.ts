@@ -7,6 +7,10 @@ import {
   type DeliveryVerification,
   type EnrichmentSearchResult,
 } from "./supplier-enrichment";
+import {
+  deriveSupplierSearchCriteria,
+  type SupplierSearchCriteria,
+} from "../shared/supplier-search-criteria";
 
 declare const process: {
   env: {
@@ -19,6 +23,7 @@ declare const process: {
 interface SearchSuppliersBody {
   query?: unknown;
   deliveryRegion?: unknown;
+  criteria?: unknown;
 }
 
 interface VercelRequest {
@@ -69,6 +74,32 @@ function diagnosticRawResult(result: TavilyResult, index?: number) {
 
 function diagnosticsLog(prefix: "PRIMARY" | "OFFICIAL" | "EXTERNAL" | "FINAL" | "SUMMARY", payload: unknown): void {
   console.log(`[SUPPLIER_DIAGNOSTICS][${prefix}]`, JSON.stringify(payload));
+}
+
+function structuredCriteriaFromBody(
+  query: string,
+  deliveryRegion: string,
+  value: unknown,
+): SupplierSearchCriteria {
+  const fallback = deriveSupplierSearchCriteria(query, deliveryRegion);
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return fallback;
+  const candidate = value as Record<string, unknown>;
+  const product = typeof candidate.product === "string" || candidate.product === null
+    ? candidate.product
+    : fallback.product;
+  const region = typeof candidate.deliveryRegion === "string" && candidate.deliveryRegion.trim()
+    ? candidate.deliveryRegion.trim()
+    : fallback.deliveryRegion;
+  let maxMoq = fallback.maxMoq;
+  if (candidate.maxMoq === null) maxMoq = null;
+  else if (candidate.maxMoq && typeof candidate.maxMoq === "object" && !Array.isArray(candidate.maxMoq)) {
+    const quantity = candidate.maxMoq as Record<string, unknown>;
+    if (typeof quantity.value === "number" && Number.isFinite(quantity.value) && quantity.value > 0
+      && (quantity.unit === "кг" || quantity.unit === "шт" || quantity.unit === "т")) {
+      maxMoq = { value: quantity.value, unit: quantity.unit, displayValue: `до ${quantity.value} ${quantity.unit}` };
+    }
+  }
+  return { product, deliveryRegion: region, maxMoq };
 }
 
 function isTavilyResult(value: unknown): value is TavilyResult {
@@ -140,7 +171,7 @@ export default async function handler(
     return;
   }
 
-  const { query, deliveryRegion } = body as SearchSuppliersBody;
+  const { query, deliveryRegion, criteria: requestCriteria } = body as SearchSuppliersBody;
 
   if (typeof query !== "string" || query.trim().length === 0) {
     response.status(400).json({ error: 'The "query" field must be a non-empty string.' });
@@ -162,8 +193,9 @@ export default async function handler(
   }
 
   const normalizedQuery = query.trim();
-  const normalizedDeliveryRegion = deliveryRegion.trim();
-  const requestedProduct = extractProduct(normalizedQuery, "", "");
+  const criteria = structuredCriteriaFromBody(normalizedQuery, deliveryRegion.trim(), requestCriteria);
+  const normalizedDeliveryRegion = criteria.deliveryRegion;
+  const requestedProduct = extractProduct(criteria.product ?? normalizedQuery, "", "");
   const searchQuery = [
     normalizedQuery,
     normalizedDeliveryRegion && `delivery region: ${normalizedDeliveryRegion}`,
@@ -245,6 +277,7 @@ export default async function handler(
     diagnosticsLog("PRIMARY", {
       requestId,
       normalizedQuery,
+      criteria,
       deliveryRegion: normalizedDeliveryRegion,
       tavilyQuery: searchQuery,
       rawResults: tavilyResults.map((result, index) => diagnosticRawResult(result, index)),
@@ -298,6 +331,7 @@ export default async function handler(
         diagnosticsLog(stage === "official" ? "OFFICIAL" : "EXTERNAL", loggedPayload);
         diagnosticTrace[stage] = payload.result;
       } : undefined,
+      criteria.maxMoq?.displayValue ?? null,
     );
     const fields = mergeEnrichment(primary, verification);
     if (diagnosticsEnabled) diagnosticTrace.final = fields;

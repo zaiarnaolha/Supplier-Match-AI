@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import handler from "../api/search-suppliers.ts";
+import { buildSupplierSearchRequest } from "../shared/supplier-search-criteria.ts";
 
 type Payload = { query?: string; include_domains?: string[] };
 
@@ -17,11 +18,11 @@ function supplier(url: string, score = 0.9) {
   };
 }
 
-async function invoke() {
+async function invoke(body: unknown = { query: "кава в зернах оптом", deliveryRegion: "Ukraine" }) {
   let statusCode = 0;
   let responseBody: unknown;
   await handler(
-    { method: "POST", body: { query: "кава в зернах оптом", deliveryRegion: "Ukraine" } },
+    { method: "POST", body },
     {
       status(code) { statusCode = code; return this; },
       setHeader() { return this; },
@@ -148,6 +149,48 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
     assert.match(summaryLine, /"officialCalls":1/);
     assert.match(summaryLine, /"externalCalls":0/);
     assert.match(summaryLine, /"returnedCount":1/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.log = originalLog;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+    if (originalDiagnostics === undefined) delete process.env.SUPPLIER_SEARCH_DIAGNOSTICS;
+    else process.env.SUPPLIER_SEARCH_DIAGNOSTICS = originalDiagnostics;
+  }
+});
+
+test("control criteria reach backend and target both enrichment queries without becoming supplier facts", async () => {
+  const query = "Шукаю постачальника кави в зернах в Україні для невеликої кав'ярні, MOQ до 20 кг";
+  const originalFetch = globalThis.fetch;
+  const originalLog = console.log;
+  const originalKey = process.env.TAVILY_API_KEY;
+  const originalDiagnostics = process.env.SUPPLIER_SEARCH_DIAGNOSTICS;
+  const calls: Payload[] = [];
+  const logs: string[] = [];
+  process.env.TAVILY_API_KEY = "test-key";
+  process.env.SUPPLIER_SEARCH_DIAGNOSTICS = "true";
+  console.log = (...values: unknown[]) => { logs.push(values.map(String).join(" ")); };
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    calls.push(payload);
+    if (calls.length === 1) return tavily([supplier("https://exact-coffee.example/catalog/coffee")]);
+    if (calls.length === 2) return tavily([{
+      title: "Exact Coffee catalog", url: "https://exact-coffee.example/catalog",
+      content: "Whole bean coffee for cafes.", score: 0.8,
+    }]);
+    return tavily([]);
+  };
+  try {
+    const response = await invoke(buildSupplierSearchRequest(query));
+    assert.equal(response.statusCode, 200);
+    assert.equal(calls.length, 3);
+    assert.match(calls[1].query ?? "", /buyer maximum MOQ до 20 кг/);
+    assert.match(calls[1].query ?? "", /delivery shipping Україна/);
+    assert.match(calls[2].query ?? "", /до 20 кг Україна shipping delivery/);
+    assert.equal(response.responseBody.results[0].moq, null, "requested MOQ must not become supplier MOQ");
+    assert.equal(response.responseBody.results[0].supplierLocation, null, "delivery region must not become supplier location");
+    assert.equal((response.responseBody.results[0].delivery as { status: string }).status, "not_confirmed");
+    const primaryLog = logs.find(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][PRIMARY]")) ?? "";
+    assert.match(primaryLog, /"criteria":\{"product":"Кава в зернах","deliveryRegion":"Україна","maxMoq":\{"value":20/);
   } finally {
     globalThis.fetch = originalFetch;
     console.log = originalLog;

@@ -238,11 +238,13 @@ export async function enrichSupplier(
   deliveryRegion: string,
   search: EnrichmentSearch,
   diagnostics?: EnrichmentDiagnostics,
+  requestedMaxMoq: string | null = null,
 ): Promise<EnrichmentResult> {
   const supplierHostname = hostname(supplier.url);
   const empty = extractVerifiedEnrichment([], { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official" });
   let official = empty;
-  const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price delivery shipping ${deliveryRegion} company legal address`;
+  const moqRequirement = requestedMaxMoq ? `buyer maximum MOQ ${requestedMaxMoq}` : "";
+  const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price ${moqRequirement} delivery shipping ${deliveryRegion} company legal address`.replace(/\s+/g, " ").trim();
   try {
     const results = await search(
       officialQuery,
@@ -263,7 +265,7 @@ export async function enrichSupplier(
   }
 
   if (official.delivery.status !== "not_confirmed") return official;
-  const externalQuery = `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${deliveryRegion} shipping delivery wholesale distributor`;
+  const externalQuery = `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${moqRequirement} ${deliveryRegion} shipping delivery wholesale distributor`.replace(/\s+/g, " ").trim();
   try {
     const externalResults = await search(
       externalQuery,
