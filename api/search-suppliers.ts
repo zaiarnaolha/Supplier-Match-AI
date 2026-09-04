@@ -56,6 +56,21 @@ function hostnameKey(url: string): string {
   }
 }
 
+function diagnosticRawResult(result: TavilyResult, index?: number) {
+  return {
+    ...(index === undefined ? {} : { index }),
+    title: result.title,
+    url: result.url,
+    hostname: hostnameKey(result.url),
+    snippet: result.content.slice(0, 1200),
+    score: result.score,
+  };
+}
+
+function diagnosticsLog(prefix: "PRIMARY" | "OFFICIAL" | "EXTERNAL" | "FINAL" | "SUMMARY", payload: unknown): void {
+  console.log(`[SUPPLIER_DIAGNOSTICS][${prefix}]`, JSON.stringify(payload));
+}
+
 function isTavilyResult(value: unknown): value is TavilyResult {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
@@ -171,64 +186,77 @@ export default async function handler(
 
   const seenHostnames = new Set<string>();
   const candidates: Array<TavilyResult & { fields: ReturnType<typeof extractSupplierFields> }> = [];
-  const diagnosticsEnabled =
-    process.env.VERCEL_ENV === "preview" &&
-    process.env.SUPPLIER_SEARCH_DIAGNOSTICS === "true";
+  const diagnosticsEnabled = process.env.SUPPLIER_SEARCH_DIAGNOSTICS === "true";
   const requestId = diagnosticsEnabled
     ? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
     : null;
   const diagnosticResults: Array<{
-    resultIndex: number;
+    index: number;
     title: string;
     url: string;
-    qualified: boolean;
+    hostname: string;
+    accepted: boolean;
     reason: string | null;
-    confidence: "high" | "medium" | null;
-    evidence: string[];
+    extractedProduct: string | null;
+    productRelevant: boolean;
   }> = [];
   let qualifiedResultCount = 0;
+  let productRelevantCount = 0;
+  const productRelevantCandidates: Array<{ title: string; url: string; hostname: string }> = [];
 
   for (const [resultIndex, { title, url, content, score }] of tavilyResults.entries()) {
     const qualification = qualifySupplierCandidate(title, content, url);
 
+    const fields = extractSupplierFields(title, content, url);
+    const productRelevant = Boolean(
+      qualification.qualified
+      && fields.product
+      && requestedProduct
+      && fields.product.value === requestedProduct.value,
+    );
     if (diagnosticsEnabled) {
-      if ("reason" in qualification) {
-        diagnosticResults.push({
-          resultIndex,
-          title,
-          url,
-          qualified: false,
-          reason: qualification.reason,
-          confidence: null,
-          evidence: [],
-        });
-      } else {
-        diagnosticResults.push({
-          resultIndex,
-          title,
-          url,
-          qualified: true,
-          reason: null,
-          confidence: qualification.confidence,
-          evidence: qualification.evidence,
-        });
-      }
+      diagnosticResults.push({
+        index: resultIndex,
+        title,
+        url,
+        hostname: hostnameKey(url),
+        accepted: qualification.qualified,
+        reason: qualification.qualified ? null : qualification.reason,
+        extractedProduct: fields.product?.value ?? null,
+        productRelevant,
+      });
     }
 
     if (!qualification.qualified) continue;
     qualifiedResultCount += 1;
-
-    const fields = extractSupplierFields(title, content, url);
     // Supplier identity alone is insufficient: the primary evidence must also name the requested product.
     if (!fields.product || !requestedProduct || fields.product.value !== requestedProduct.value) continue;
+    productRelevantCount += 1;
 
     const hostname = hostnameKey(url);
+    productRelevantCandidates.push({ title, url, hostname });
     if (seenHostnames.has(hostname)) continue;
 
     seenHostnames.add(hostname);
     candidates.push({ title, url, content, score, fields });
   }
 
+  if (diagnosticsEnabled) {
+    diagnosticsLog("PRIMARY", {
+      requestId,
+      normalizedQuery,
+      deliveryRegion: normalizedDeliveryRegion,
+      tavilyQuery: searchQuery,
+      rawResults: tavilyResults.map((result, index) => diagnosticRawResult(result, index)),
+      evaluations: diagnosticResults,
+      afterQualificationAndProductRelevance: productRelevantCandidates,
+      afterHostnameDedupe: candidates.map(candidate => ({ title: candidate.title, url: candidate.url, hostname: hostnameKey(candidate.url) })),
+    });
+  }
+
+  let officialCalls = 0;
+  let externalCalls = 0;
+  const finalDiagnostics: Array<{ supplierTitle: string; supplierUrl: string; primary: unknown; official: unknown; external: unknown; final: unknown }> = [];
   const enriched = await Promise.all(candidates.map(async candidate => {
     const primary = {
       product: candidate.fields.product?.value ?? null,
@@ -238,13 +266,41 @@ export default async function handler(
       supplierLocation: candidate.fields.country?.confidence === "high" ? candidate.fields.country.value : null,
       delivery: { region: normalizedDeliveryRegion, status: "not_confirmed" as const, evidence: null, sourceUrl: null, sourceType: null },
     };
+    const diagnosticTrace = {
+      supplierTitle: candidate.title,
+      supplierUrl: candidate.url,
+      primary,
+      official: null as unknown,
+      external: null as unknown,
+      final: null as unknown,
+    };
+    if (diagnosticsEnabled) finalDiagnostics.push(diagnosticTrace);
     const verification = await enrichSupplier(
       { title: candidate.title, url: candidate.url },
       requestedProduct.value,
       normalizedDeliveryRegion,
       (enrichmentQuery, options) => tavilySearch(apiKey, enrichmentQuery, options),
+      diagnosticsEnabled ? (stage, payload) => {
+        if (stage === "official") officialCalls += 1;
+        else externalCalls += 1;
+        const rawResults = (payload.rawResults as TavilyResult[]).map(result => diagnosticRawResult(result));
+        const evaluations = payload.evaluations as Array<Record<string, unknown>>;
+        const loggedPayload = {
+          requestId,
+          ...payload,
+          rawResults,
+          productCandidates: evaluations.map(item => item.productCandidate).filter(Boolean),
+          moqCandidates: evaluations.map(item => item.moqCandidate).filter(Boolean),
+          priceCandidates: evaluations.map(item => item.priceCandidate).filter(Boolean),
+          supplierLocationCandidates: evaluations.map(item => item.supplierLocationCandidate).filter(Boolean),
+          deliveryEvidenceCandidates: evaluations.map(item => item.deliveryEvidenceCandidate).filter(Boolean),
+        };
+        diagnosticsLog(stage === "official" ? "OFFICIAL" : "EXTERNAL", loggedPayload);
+        diagnosticTrace[stage] = payload.result;
+      } : undefined,
     );
     const fields = mergeEnrichment(primary, verification);
+    if (diagnosticsEnabled) diagnosticTrace.final = fields;
     return {
       title: candidate.title,
       url: candidate.url,
@@ -261,15 +317,33 @@ export default async function handler(
   const results = rankAndFilterByDelivery(enriched);
 
   if (diagnosticsEnabled) {
-    console.info("supplier_search_diagnostics", {
-      event: "supplier_search_diagnostics",
+    for (const [candidateIndex, candidate] of enriched.entries()) {
+      const trace = finalDiagnostics.find(item => item.supplierUrl === candidate.url);
+      const rankingIndex = results.findIndex(result => result.url === candidate.url);
+      diagnosticsLog("FINAL", {
+        requestId,
+        supplierTitle: candidate.title,
+        primaryValues: trace?.primary ?? null,
+        officialValues: trace?.official ?? null,
+        externalValues: trace?.external ?? null,
+        finalMergedValues: trace?.final ?? candidate,
+        excludedBecauseNotAvailable: candidate.delivery.status === "not_available",
+        finalRankingPosition: rankingIndex < 0 ? null : rankingIndex + 1,
+        preFilterPosition: candidateIndex + 1,
+      });
+    }
+    diagnosticsLog("SUMMARY", {
       requestId,
-      results: diagnosticResults,
-      summary: {
-        rawResultCount: tavilyResults.length,
-        qualifiedResultCount,
-        returnedResultCount: results.length,
-      },
+      primaryRawCount: tavilyResults.length,
+      qualifiedCount: qualifiedResultCount,
+      productRelevantCount,
+      dedupedCount: candidates.length,
+      officialCalls,
+      externalCalls,
+      confirmedDeliveryCount: enriched.filter(item => item.delivery.status === "confirmed").length,
+      notConfirmedDeliveryCount: enriched.filter(item => item.delivery.status === "not_confirmed").length,
+      notAvailableCount: enriched.filter(item => item.delivery.status === "not_available").length,
+      returnedCount: results.length,
     });
   }
 

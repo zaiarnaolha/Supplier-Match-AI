@@ -110,3 +110,49 @@ test("a qualified supplier irrelevant to the requested product is rejected", asy
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
   }
 });
+
+test("diagnostics are env-gated, structured, bounded, and absent from the API response", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLog = console.log;
+  const originalKey = process.env.TAVILY_API_KEY;
+  const originalDiagnostics = process.env.SUPPLIER_SEARCH_DIAGNOSTICS;
+  const logs: string[] = [];
+  let calls = 0;
+  process.env.TAVILY_API_KEY = "secret-test-key";
+  process.env.SUPPLIER_SEARCH_DIAGNOSTICS = "true";
+  console.log = (...values: unknown[]) => { logs.push(values.map(String).join(" ")); };
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) return tavily([supplier("https://exact-coffee.example/catalog/coffee")]);
+    return tavily([{
+      title: "Exact Coffee delivery",
+      url: "https://exact-coffee.example/delivery",
+      content: `Whole bean coffee. We ship to Ukraine. ${"x".repeat(1600)}`,
+      score: 0.8,
+    }]);
+  };
+  try {
+    const response = await invoke();
+    assert.equal(calls, 2, "diagnostics must not add Tavily calls");
+    assert.equal("diagnostics" in response.responseBody, false);
+    assert.equal(JSON.stringify(response.responseBody).includes("SUPPLIER_DIAGNOSTICS"), false);
+    assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][PRIMARY]")));
+    assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][OFFICIAL]")));
+    assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][FINAL]")));
+    assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][SUMMARY]")));
+    assert.equal(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][EXTERNAL]")), false);
+    assert.equal(logs.join("\n").includes("secret-test-key"), false);
+    assert.equal(logs.join("\n").includes("x".repeat(1201)), false, "logged snippets must be truncated");
+    const summaryLine = logs.find(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][SUMMARY]")) ?? "";
+    assert.match(summaryLine, /"primaryRawCount":1/);
+    assert.match(summaryLine, /"officialCalls":1/);
+    assert.match(summaryLine, /"externalCalls":0/);
+    assert.match(summaryLine, /"returnedCount":1/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.log = originalLog;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+    if (originalDiagnostics === undefined) delete process.env.SUPPLIER_SEARCH_DIAGNOSTICS;
+    else process.env.SUPPLIER_SEARCH_DIAGNOSTICS = originalDiagnostics;
+  }
+});

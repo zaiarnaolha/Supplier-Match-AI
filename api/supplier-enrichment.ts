@@ -31,6 +31,11 @@ export type EnrichmentSearch = (
   options: { includeDomains?: string[]; maxResults: number },
 ) => Promise<EnrichmentSearchResult[]>;
 
+export type EnrichmentDiagnostics = (
+  stage: "official" | "external",
+  payload: Record<string, unknown>,
+) => void;
+
 type SourcedField = ExtractedField & { sourceUrl?: string };
 
 const GENERIC_EXTERNAL = /(?:top|топ|rating|рейтинг|best|кращі|list of|список|directory|каталог)\s*(?:\d+\s*)?(?:coffee\s*)?(?:suppliers?|manufacturers?|постачальник\p{L}*|виробник\p{L}*)/iu;
@@ -70,6 +75,19 @@ function supplierIdentityPresent(result: EnrichmentSearchResult, supplierName: s
   return (name.length >= 4 && text.includes(name)) || (domain.length >= 4 && (text.includes(domain) || hostname(result.url) === domain));
 }
 
+function identityMatchKind(
+  result: EnrichmentSearchResult,
+  supplierName: string,
+  supplierHostname: string,
+): "company_name" | "hostname" | "neither" {
+  const text = normalizeIdentity(textOf(result));
+  const name = normalizeIdentity(supplierName);
+  const domain = normalizeIdentity(supplierHostname);
+  if (name.length >= 4 && text.includes(name)) return "company_name";
+  if (domain.length >= 4 && (text.includes(domain) || hostname(result.url) === domain)) return "hostname";
+  return "neither";
+}
+
 function deliverySignal(result: EnrichmentSearchResult, region: string): { negative: boolean; evidence: string } | null {
   const text = textOf(result);
   const regionRegex = regionPattern(region);
@@ -99,6 +117,55 @@ function explicitLocation(result: EnrichmentSearchResult): SourcedField {
 function oneValue(fields: SourcedField[]): SourcedField {
   const values = new Map(fields.filter(Boolean).map(field => [field!.value.toLocaleLowerCase(), field!]));
   return values.size === 1 ? [...values.values()][0] : null;
+}
+
+function diagnosticEvaluation(
+  result: EnrichmentSearchResult,
+  context: { supplierName: string; supplierHostname: string; deliveryRegion: string; sourceType: EvidenceSource },
+) {
+  const text = textOf(result);
+  const identityMatchedBy = identityMatchKind(result, context.supplierName, context.supplierHostname);
+  const genericRejected = GENERIC_EXTERNAL.test(text);
+  const product = extractProduct(result.title, result.content, result.url);
+  const moq = product ? extractMoq(result.title, result.content) : null;
+  const price = product ? extractPrice(result.title, result.content, product, result.url) : null;
+  const location = explicitLocation(result);
+  const regionMatched = regionPattern(context.deliveryRegion)?.test(text) ?? false;
+  const deliveryContextMatched = DELIVERY_WORD.test(text);
+  const delivery = deliverySignal(result, context.deliveryRegion);
+  const officialDomainMatched = hostname(result.url) === context.supplierHostname
+    || hostname(result.url).endsWith(`.${context.supplierHostname}`);
+  const identityMatched = identityMatchedBy !== "neither";
+  const eligible = context.sourceType === "official"
+    ? officialDomainMatched
+    : identityMatched && !genericRejected;
+  let rejectionReason: string | null = null;
+  if (context.sourceType === "official" && !officialDomainMatched) rejectionReason = "result is outside canonical supplier hostname";
+  else if (context.sourceType === "external" && genericRejected) rejectionReason = "generic/list/directory result";
+  else if (context.sourceType === "external" && !identityMatched) rejectionReason = "supplier identity not matched";
+  else if (!regionMatched) rejectionReason = "deliveryRegion not matched";
+  else if (!deliveryContextMatched) rejectionReason = "delivery context not matched";
+
+  return {
+    title: result.title,
+    url: result.url,
+    hostname: hostname(result.url),
+    supplierIdentityMatched: identityMatched,
+    identityMatchedBy,
+    genericRejected,
+    requestedProductMatched: Boolean(product),
+    deliveryRegionMatched: regionMatched,
+    deliveryContextMatched,
+    positiveDeliveryEvidence: Boolean(delivery && !delivery.negative),
+    negativeDeliveryEvidence: Boolean(delivery?.negative),
+    acceptedAsDeliveryEvidence: Boolean(eligible && delivery),
+    rejectionReason,
+    productCandidate: product?.value ?? null,
+    moqCandidate: moq?.value ?? null,
+    priceCandidate: price?.value ?? null,
+    supplierLocationCandidate: location?.value ?? null,
+    deliveryEvidenceCandidate: delivery?.evidence ?? null,
+  };
 }
 
 export function extractVerifiedEnrichment(
@@ -170,27 +237,53 @@ export async function enrichSupplier(
   requestedProduct: string,
   deliveryRegion: string,
   search: EnrichmentSearch,
+  diagnostics?: EnrichmentDiagnostics,
 ): Promise<EnrichmentResult> {
   const supplierHostname = hostname(supplier.url);
   const empty = extractVerifiedEnrichment([], { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official" });
   let official = empty;
+  const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price delivery shipping ${deliveryRegion} company legal address`;
   try {
     const results = await search(
-      `${requestedProduct} wholesale B2B catalog MOQ minimum order price delivery shipping ${deliveryRegion} company legal address`,
+      officialQuery,
       { includeDomains: [supplierHostname], maxResults: 5 },
     );
     official = extractVerifiedEnrichment(results, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official" });
-  } catch { /* A supplier remains usable when its enrichment request fails. */ }
+    diagnostics?.("official", {
+      supplierTitle: supplier.title,
+      hostname: supplierHostname,
+      query: officialQuery,
+      rawResults: results,
+      evaluations: results.map(result => diagnosticEvaluation(result, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official" })),
+      result: official,
+      callFailed: false,
+    });
+  } catch {
+    diagnostics?.("official", { supplierTitle: supplier.title, hostname: supplierHostname, query: officialQuery, rawResults: [], evaluations: [], result: official, callFailed: true });
+  }
 
   if (official.delivery.status !== "not_confirmed") return official;
+  const externalQuery = `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${deliveryRegion} shipping delivery wholesale distributor`;
   try {
     const externalResults = await search(
-      `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${deliveryRegion} shipping delivery wholesale distributor`,
+      externalQuery,
       { maxResults: 5 },
     );
     const external = extractVerifiedEnrichment(externalResults, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external" });
+    diagnostics?.("external", {
+      supplierTitle: supplier.title,
+      hostname: supplierHostname,
+      query: externalQuery,
+      rawResults: externalResults,
+      evaluations: externalResults.map(result => diagnosticEvaluation(result, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external" })),
+      result: external,
+      callFailed: false,
+    });
     return mergeEnrichment(official, external);
-  } catch { return official; }
+  } catch {
+    diagnostics?.("external", { supplierTitle: supplier.title, hostname: supplierHostname, query: externalQuery, rawResults: [], evaluations: [], result: empty, callFailed: true });
+    return official;
+  }
 }
 
 export function rankAndFilterByDelivery<T extends { delivery: DeliveryVerification; score: number }>(results: T[]): T[] {
