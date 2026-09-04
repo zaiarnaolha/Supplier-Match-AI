@@ -27,6 +27,77 @@ interface TavilyResult {
   score: number;
 }
 
+interface SupplierSearchResult extends TavilyResult {
+  product: string | null;
+  location: string | null;
+}
+
+const PRODUCT_STOP_WORDS = new Set([
+  "actual", "and", "або", "для", "доставка", "доставкою", "доставки", "знайти",
+  "запит", "із", "компанія", "купити", "manufacturer", "manufacturers", "мені",
+  "опт", "оптовик", "оптовики", "потрібен", "потрібна", "потрібні", "постачальник",
+  "постачальника", "постачальники", "постачальників", "продаж", "регіон", "supplier",
+  "suppliers", "виробник", "виробника", "виробники", "дистриб'ютор", "дистриб’ютор",
+  "дистриб'ютора", "дистриб’ютора", "distributor", "distributors", "wholesale",
+  "wholesaler", "wholesalers", "with", "шукаю", "що", "який", "яка", "які",
+]);
+
+function words(value: string): string[] {
+  return value.toLocaleLowerCase().match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu) ?? [];
+}
+
+function extractProduct(
+  query: string,
+  deliveryRegion: string,
+  title: string,
+  content: string,
+): string | null {
+  const excludedWords = new Set([...PRODUCT_STOP_WORDS, ...words(deliveryRegion)]);
+  const sourceWords = new Set(words(`${title} ${content}`));
+  const queryWords = words(query);
+  let bestMatch: string[] = [];
+  let currentMatch: string[] = [];
+
+  for (const word of queryWords) {
+    if (word.length >= 3 && !excludedWords.has(word) && sourceWords.has(word)) {
+      currentMatch.push(word);
+      if (currentMatch.length > bestMatch.length) bestMatch = [...currentMatch];
+    } else {
+      currentMatch = [];
+    }
+  }
+
+  return bestMatch.length > 0 ? bestMatch.join(" ") : null;
+}
+
+function extractLocation(title: string, content: string): string | null {
+  const text = `${title}. ${content}`.replace(/\s+/g, " ");
+  const patterns = [
+    /\b(?:based|located|headquartered)\s+in\s+([^.;|\n]{2,80})/iu,
+    /\b(?:headquarters|location|address)\s*:\s*([^.;|\n]{2,80})/iu,
+    /(?:розташован\p{L}*|базується|знаходиться)\s+(?:у|в)\s+([^.;|\n]{2,80})/iu,
+    /(?:адреса|місцезнаходження)\s*:\s*([^.;|\n]{2,80})/iu,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)?.[1]
+      ?.split(/\s+(?:and|but|that|which|with|та|але|що|який|яка|яке|які)\s+/iu, 1)[0]
+      .trim()
+      .replace(/[,\s]+$/, "");
+    if (match) return match;
+  }
+
+  return null;
+}
+
+function hostnameKey(url: string): string {
+  try {
+    return new URL(url).hostname.toLocaleLowerCase().replace(/^www\./, "");
+  } catch {
+    return url.trim().toLocaleLowerCase();
+  }
+}
+
 function isTavilyResult(value: unknown): value is TavilyResult {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
@@ -95,7 +166,9 @@ export default async function handler(
   const searchQuery = [
     normalizedQuery,
     normalizedDeliveryRegion && `delivery region: ${normalizedDeliveryRegion}`,
-    "wholesale suppliers",
+    "Find actual suppliers, manufacturers, distributors, or wholesalers that sell or distribute the requested product.",
+    "Prioritize official supplier or manufacturer websites, product catalog pages, and wholesale or B2B supplier pages.",
+    "Exclude blog posts, news articles, guides, educational content, how to choose a supplier articles, and general informational pages.",
   ]
     .filter(Boolean)
     .join(" ");
@@ -160,9 +233,28 @@ export default async function handler(
     return;
   }
 
-  const results = tavilyResults.map(
-    ({ title, url, content, score }) => ({ title, url, content, score }),
-  );
+  const seenHostnames = new Set<string>();
+  const results: SupplierSearchResult[] = [];
+
+  for (const { title, url, content, score } of tavilyResults) {
+    const hostname = hostnameKey(url);
+    if (seenHostnames.has(hostname)) continue;
+
+    seenHostnames.add(hostname);
+    results.push({
+      title,
+      url,
+      content,
+      score,
+      product: extractProduct(
+        normalizedQuery,
+        normalizedDeliveryRegion,
+        title,
+        content,
+      ),
+      location: extractLocation(title, content),
+    });
+  }
 
   response.status(200).json({
     query: normalizedQuery,
