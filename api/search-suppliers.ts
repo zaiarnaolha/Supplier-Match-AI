@@ -1,5 +1,6 @@
 import { extractSupplierFields } from "./supplier-extraction";
 import { qualifySupplierCandidate } from "./supplier-qualification";
+import { buildEnrichmentQuery, extractEnrichment, type EnrichmentSnippet } from "./supplier-enrichment";
 
 declare const process: {
   env: {
@@ -37,6 +38,12 @@ interface SupplierSearchResult extends TavilyResult {
   country: string | null;
   moq: string | null;
   price: string | null;
+  supplierLocation: string | null;
+  delivery: {
+    region: string | null;
+    status: "confirmed" | "not_confirmed" | "not_available";
+    evidence: string | null;
+  };
 }
 
 function hostnameKey(url: string): string {
@@ -183,7 +190,7 @@ export default async function handler(
   }
 
   const seenHostnames = new Set<string>();
-  const results: SupplierSearchResult[] = [];
+  const results: Array<SupplierSearchResult & { hostname: string }> = [];
   const diagnosticsEnabled =
     process.env.VERCEL_ENV === "preview" &&
     process.env.SUPPLIER_SEARCH_DIAGNOSTICS === "true";
@@ -236,15 +243,19 @@ export default async function handler(
 
     seenHostnames.add(hostname);
     const fields = extractSupplierFields(title, content, url);
+    const supplierLocation = fields.country?.confidence === "high" ? fields.country.value : null;
     results.push({
       title,
       url,
       content,
       score,
       product: fields.product?.value ?? null,
-      country: fields.country?.value ?? null,
+      country: supplierLocation,
       moq: fields.moq?.value ?? null,
       price: fields.price?.value ?? null,
+      supplierLocation,
+      delivery: { region: normalizedDeliveryRegion || null, status: "not_confirmed", evidence: null },
+      hostname,
     });
   }
 
@@ -261,9 +272,50 @@ export default async function handler(
     });
   }
 
+  const enrichedResults = await Promise.all(results.map(async ({ hostname, ...supplier }) => {
+    try {
+      const enrichmentResponse = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: buildEnrichmentQuery(hostname, normalizedQuery, normalizedDeliveryRegion),
+          search_depth: "basic",
+          topic: "general",
+          max_results: 5,
+          include_domains: [hostname],
+          include_answer: false,
+          include_raw_content: false,
+          include_images: false,
+        }),
+      });
+      if (!enrichmentResponse.ok) return supplier;
+      const data: unknown = await enrichmentResponse.json();
+      if (data === null || typeof data !== "object" || Array.isArray(data)) return supplier;
+      const rawResults = (data as Record<string, unknown>).results;
+      if (!Array.isArray(rawResults) || !rawResults.every(isTavilyResult)) return supplier;
+      const snippets: EnrichmentSnippet[] = [
+        { title: supplier.title, url: supplier.url, content: supplier.content },
+        ...rawResults.map(({ title, url, content }) => ({ title, url, content })),
+      ];
+      const enrichment = extractEnrichment(snippets, normalizedDeliveryRegion);
+      const supplierLocation = enrichment.supplierLocation ?? supplier.supplierLocation;
+      return {
+        ...supplier,
+        product: enrichment.product,
+        moq: enrichment.moq,
+        price: enrichment.price,
+        supplierLocation,
+        country: supplierLocation,
+        delivery: enrichment.delivery,
+      };
+    } catch {
+      return supplier;
+    }
+  }));
+
   response.status(200).json({
     query: normalizedQuery,
     deliveryRegion: normalizedDeliveryRegion,
-    results,
+    results: enrichedResults,
   });
 }
