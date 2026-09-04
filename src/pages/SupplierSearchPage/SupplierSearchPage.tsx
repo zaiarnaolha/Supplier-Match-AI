@@ -11,6 +11,7 @@ import type { Supplier } from '@/data/suppliers';
 import { CriterionStatusIcon } from '@/components/CriterionStatusIcon/CriterionStatusIcon';
 import { Box, ChevronDown, MapPin, RotateCcw, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
+import { buildSupplierSearchRequest } from '../../../shared/supplier-search-criteria';
 
 export type SearchStage = 'idle' | 'loading' | 'clarification' | 'search-ready';
 function Filters() {
@@ -80,8 +81,16 @@ type SearchResult = {
   score: number;
   product: string | null;
   country: string | null;
+  supplierLocation: string | null;
   moq: string | null;
   price: string | null;
+  delivery: {
+    region: string;
+    status: 'confirmed' | 'not_confirmed' | 'not_available';
+    evidence: string | null;
+    sourceUrl: string | null;
+    sourceType: 'official' | 'external' | null;
+  };
 };
 
 function isSearchResult(value: unknown): value is SearchResult {
@@ -94,8 +103,14 @@ function isSearchResult(value: unknown): value is SearchResult {
     && Number.isFinite(result.score)
     && (typeof result.product === 'string' || result.product === null)
     && (typeof result.country === 'string' || result.country === null)
+    && (typeof result.supplierLocation === 'string' || result.supplierLocation === null)
     && (typeof result.moq === 'string' || result.moq === null)
-    && (typeof result.price === 'string' || result.price === null);
+    && (typeof result.price === 'string' || result.price === null)
+    && result.delivery !== null
+    && typeof result.delivery === 'object'
+    && !Array.isArray(result.delivery)
+    && typeof (result.delivery as Record<string, unknown>).region === 'string'
+    && ['confirmed', 'not_confirmed', 'not_available'].includes(String((result.delivery as Record<string, unknown>).status));
 }
 
 function mapSearchResult(result: SearchResult, index: number): Supplier {
@@ -110,7 +125,7 @@ function mapSearchResult(result: SearchResult, index: number): Supplier {
   return {
     id: `${index}-${hostname.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`,
     name: result.title,
-    location: result.country ?? 'Не вказано',
+    location: result.supplierLocation ?? 'Не вказано',
     match: `${relevance}% Match`,
     breakdown: 'Структуровані критерії недоступні',
     updatedAt: 'Не вказано',
@@ -124,7 +139,11 @@ function mapSearchResult(result: SearchResult, index: number): Supplier {
         value: result.product ?? 'Не вказано',
         status: result.product ? 'Відповідає' as const : 'Немає даних' as const,
       },
-      { label: 'Регіон доставки', value: result.country ?? 'Не вказано', status: result.country ? 'Відповідає' as const : 'Немає даних' as const },
+      {
+        label: 'Регіон доставки',
+        value: result.delivery.status === 'confirmed' ? result.delivery.region : `Не підтверджено для ${result.delivery.region}`,
+        status: result.delivery.status === 'confirmed' ? 'Відповідає' as const : 'Немає даних' as const,
+      },
       { label: 'MOQ', value: result.moq ?? 'Не вказано', status: result.moq ? 'Відповідає' as const : 'Немає даних' as const },
       { label: 'Ціна', value: result.price ?? 'Не вказано', status: result.price ? 'Відповідає' as const : 'Немає даних' as const },
     ],
@@ -158,12 +177,13 @@ export function SupplierSearchPage({ query, setQuery, stage, setStage, deliveryR
     requestController.current = controller;
     setSearchError('');
     setStage('loading');
+    const requestBody = buildSupplierSearchRequest(query, region);
 
     try {
       const response = await fetch('/api/search-suppliers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim(), deliveryRegion: region }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
       let data: unknown;

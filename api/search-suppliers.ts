@@ -1,5 +1,16 @@
-import { extractSupplierFields } from "./supplier-extraction";
+import { extractProduct, extractSupplierFields } from "./supplier-extraction";
 import { qualifySupplierCandidate } from "./supplier-qualification";
+import {
+  enrichSupplier,
+  mergeEnrichment,
+  rankAndFilterByDelivery,
+  type DeliveryVerification,
+  type EnrichmentSearchResult,
+} from "./supplier-enrichment";
+import {
+  deriveSupplierSearchCriteria,
+  type SupplierSearchCriteria,
+} from "../shared/supplier-search-criteria";
 
 declare const process: {
   env: {
@@ -12,6 +23,7 @@ declare const process: {
 interface SearchSuppliersBody {
   query?: unknown;
   deliveryRegion?: unknown;
+  criteria?: unknown;
 }
 
 interface VercelRequest {
@@ -35,8 +47,10 @@ interface TavilyResult {
 interface SupplierSearchResult extends TavilyResult {
   product: string | null;
   country: string | null;
+  supplierLocation: string | null;
   moq: string | null;
   price: string | null;
+  delivery: DeliveryVerification;
 }
 
 function hostnameKey(url: string): string {
@@ -45,6 +59,47 @@ function hostnameKey(url: string): string {
   } catch {
     return url.trim().toLocaleLowerCase();
   }
+}
+
+function diagnosticRawResult(result: TavilyResult, index?: number) {
+  return {
+    ...(index === undefined ? {} : { index }),
+    title: result.title,
+    url: result.url,
+    hostname: hostnameKey(result.url),
+    snippet: result.content.slice(0, 1200),
+    score: result.score,
+  };
+}
+
+function diagnosticsLog(prefix: "PRIMARY" | "OFFICIAL" | "EXTERNAL" | "FINAL" | "SUMMARY", payload: unknown): void {
+  console.log(`[SUPPLIER_DIAGNOSTICS][${prefix}]`, JSON.stringify(payload));
+}
+
+function structuredCriteriaFromBody(
+  query: string,
+  deliveryRegion: string,
+  value: unknown,
+): SupplierSearchCriteria {
+  const fallback = deriveSupplierSearchCriteria(query, deliveryRegion);
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return fallback;
+  const candidate = value as Record<string, unknown>;
+  const product = typeof candidate.product === "string" || candidate.product === null
+    ? candidate.product
+    : fallback.product;
+  const region = typeof candidate.deliveryRegion === "string" && candidate.deliveryRegion.trim()
+    ? candidate.deliveryRegion.trim()
+    : fallback.deliveryRegion;
+  let maxMoq = fallback.maxMoq;
+  if (candidate.maxMoq === null) maxMoq = null;
+  else if (candidate.maxMoq && typeof candidate.maxMoq === "object" && !Array.isArray(candidate.maxMoq)) {
+    const quantity = candidate.maxMoq as Record<string, unknown>;
+    if (typeof quantity.value === "number" && Number.isFinite(quantity.value) && quantity.value > 0
+      && (quantity.unit === "кг" || quantity.unit === "шт" || quantity.unit === "т")) {
+      maxMoq = { value: quantity.value, unit: quantity.unit, displayValue: `до ${quantity.value} ${quantity.unit}` };
+    }
+  }
+  return { product, deliveryRegion: region, maxMoq };
 }
 
 function isTavilyResult(value: unknown): value is TavilyResult {
@@ -61,6 +116,33 @@ function isTavilyResult(value: unknown): value is TavilyResult {
     typeof result.score === "number" &&
     Number.isFinite(result.score)
   );
+}
+
+async function tavilySearch(
+  apiKey: string,
+  searchQuery: string,
+  options: { includeDomains?: string[]; maxResults: number },
+): Promise<EnrichmentSearchResult[]> {
+  const tavilyResponse = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: searchQuery,
+      search_depth: "basic",
+      topic: "general",
+      max_results: options.maxResults,
+      include_domains: options.includeDomains,
+      include_answer: false,
+      include_raw_content: false,
+      include_images: false,
+    }),
+  });
+  if (!tavilyResponse.ok) throw new Error("Tavily returned an error");
+  const data: unknown = await tavilyResponse.json();
+  if (data === null || typeof data !== "object" || Array.isArray(data)) throw new Error("Invalid Tavily response");
+  const results = (data as Record<string, unknown>).results;
+  if (!Array.isArray(results) || !results.every(isTavilyResult)) throw new Error("Invalid Tavily results");
+  return results;
 }
 
 export default async function handler(
@@ -89,7 +171,7 @@ export default async function handler(
     return;
   }
 
-  const { query, deliveryRegion } = body as SearchSuppliersBody;
+  const { query, deliveryRegion, criteria: requestCriteria } = body as SearchSuppliersBody;
 
   if (typeof query !== "string" || query.trim().length === 0) {
     response.status(400).json({ error: 'The "query" field must be a non-empty string.' });
@@ -111,7 +193,9 @@ export default async function handler(
   }
 
   const normalizedQuery = query.trim();
-  const normalizedDeliveryRegion = deliveryRegion.trim();
+  const criteria = structuredCriteriaFromBody(normalizedQuery, deliveryRegion.trim(), requestCriteria);
+  const normalizedDeliveryRegion = criteria.deliveryRegion;
+  const requestedProduct = extractProduct(criteria.product ?? normalizedQuery, "", "");
   const searchQuery = [
     normalizedQuery,
     normalizedDeliveryRegion && `delivery region: ${normalizedDeliveryRegion}`,
@@ -122,25 +206,9 @@ export default async function handler(
     .filter(Boolean)
     .join(" ");
 
-  let tavilyResponse: Response;
-
+  let tavilyResults: TavilyResult[];
   try {
-    tavilyResponse = await fetch("https://api.tavily.com/search", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query: searchQuery,
-        search_depth: "basic",
-        topic: "general",
-        max_results: 5,
-        include_answer: false,
-        include_raw_content: false,
-        include_images: false,
-      }),
-    });
+    tavilyResults = await tavilySearch(apiKey, searchQuery, { maxResults: 5 });
   } catch {
     response.status(502).json({
       error: "Supplier search service is currently unavailable.",
@@ -148,116 +216,168 @@ export default async function handler(
     return;
   }
 
-  if (!tavilyResponse.ok) {
-    response.status(502).json({
-      error: "Supplier search service returned an error.",
-    });
-    return;
-  }
-
-  let tavilyData: unknown;
-
-  try {
-    tavilyData = await tavilyResponse.json();
-  } catch {
-    response.status(502).json({
-      error: "Supplier search service returned an invalid response.",
-    });
-    return;
-  }
-
-  if (tavilyData === null || typeof tavilyData !== "object" || Array.isArray(tavilyData)) {
-    response.status(502).json({
-      error: "Supplier search service returned an unexpected response.",
-    });
-    return;
-  }
-
-  const tavilyResults = (tavilyData as Record<string, unknown>).results;
-
-  if (!Array.isArray(tavilyResults) || !tavilyResults.every(isTavilyResult)) {
-    response.status(502).json({
-      error: "Supplier search service returned an unexpected response.",
-    });
-    return;
-  }
-
   const seenHostnames = new Set<string>();
-  const results: SupplierSearchResult[] = [];
-  const diagnosticsEnabled =
-    process.env.VERCEL_ENV === "preview" &&
-    process.env.SUPPLIER_SEARCH_DIAGNOSTICS === "true";
+  const candidates: Array<TavilyResult & { fields: ReturnType<typeof extractSupplierFields> }> = [];
+  const diagnosticsEnabled = process.env.SUPPLIER_SEARCH_DIAGNOSTICS === "true";
   const requestId = diagnosticsEnabled
     ? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
     : null;
   const diagnosticResults: Array<{
-    resultIndex: number;
+    index: number;
     title: string;
     url: string;
-    qualified: boolean;
+    hostname: string;
+    accepted: boolean;
     reason: string | null;
-    confidence: "high" | "medium" | null;
-    evidence: string[];
+    extractedProduct: string | null;
+    productRelevant: boolean;
   }> = [];
   let qualifiedResultCount = 0;
+  let productRelevantCount = 0;
+  const productRelevantCandidates: Array<{ title: string; url: string; hostname: string }> = [];
 
   for (const [resultIndex, { title, url, content, score }] of tavilyResults.entries()) {
     const qualification = qualifySupplierCandidate(title, content, url);
 
+    const fields = extractSupplierFields(title, content, url);
+    const productRelevant = Boolean(
+      qualification.qualified
+      && fields.product
+      && requestedProduct
+      && fields.product.value === requestedProduct.value,
+    );
     if (diagnosticsEnabled) {
-      if ("reason" in qualification) {
-        diagnosticResults.push({
-          resultIndex,
-          title,
-          url,
-          qualified: false,
-          reason: qualification.reason,
-          confidence: null,
-          evidence: [],
-        });
-      } else {
-        diagnosticResults.push({
-          resultIndex,
-          title,
-          url,
-          qualified: true,
-          reason: null,
-          confidence: qualification.confidence,
-          evidence: qualification.evidence,
-        });
-      }
+      diagnosticResults.push({
+        index: resultIndex,
+        title,
+        url,
+        hostname: hostnameKey(url),
+        accepted: qualification.qualified,
+        reason: qualification.qualified ? null : qualification.reason,
+        extractedProduct: fields.product?.value ?? null,
+        productRelevant,
+      });
     }
 
     if (!qualification.qualified) continue;
     qualifiedResultCount += 1;
+    // Supplier identity alone is insufficient: the primary evidence must also name the requested product.
+    if (!fields.product || !requestedProduct || fields.product.value !== requestedProduct.value) continue;
+    productRelevantCount += 1;
 
     const hostname = hostnameKey(url);
+    productRelevantCandidates.push({ title, url, hostname });
     if (seenHostnames.has(hostname)) continue;
 
     seenHostnames.add(hostname);
-    const fields = extractSupplierFields(title, content, url);
-    results.push({
-      title,
-      url,
-      content,
-      score,
-      product: fields.product?.value ?? null,
-      country: fields.country?.value ?? null,
-      moq: fields.moq?.value ?? null,
-      price: fields.price?.value ?? null,
-    });
+    candidates.push({ title, url, content, score, fields });
   }
 
   if (diagnosticsEnabled) {
-    console.info("supplier_search_diagnostics", {
-      event: "supplier_search_diagnostics",
+    diagnosticsLog("PRIMARY", {
       requestId,
-      results: diagnosticResults,
-      summary: {
-        rawResultCount: tavilyResults.length,
-        qualifiedResultCount,
-        returnedResultCount: results.length,
-      },
+      normalizedQuery,
+      criteria,
+      deliveryRegion: normalizedDeliveryRegion,
+      tavilyQuery: searchQuery,
+      rawResults: tavilyResults.map((result, index) => diagnosticRawResult(result, index)),
+      evaluations: diagnosticResults,
+      afterQualificationAndProductRelevance: productRelevantCandidates,
+      afterHostnameDedupe: candidates.map(candidate => ({ title: candidate.title, url: candidate.url, hostname: hostnameKey(candidate.url) })),
+    });
+  }
+
+  let officialCalls = 0;
+  let externalCalls = 0;
+  const finalDiagnostics: Array<{ supplierTitle: string; supplierUrl: string; primary: unknown; official: unknown; external: unknown; final: unknown }> = [];
+  const enriched = await Promise.all(candidates.map(async candidate => {
+    const primary = {
+      product: candidate.fields.product?.value ?? null,
+      moq: candidate.fields.moq?.value ?? null,
+      price: candidate.fields.price?.value ?? null,
+      // Medium country extraction may combine a city mention with a TLD; that is not reliable location evidence.
+      supplierLocation: candidate.fields.country?.confidence === "high" ? candidate.fields.country.value : null,
+      delivery: { region: normalizedDeliveryRegion, status: "not_confirmed" as const, evidence: null, sourceUrl: null, sourceType: null },
+    };
+    const diagnosticTrace = {
+      supplierTitle: candidate.title,
+      supplierUrl: candidate.url,
+      primary,
+      official: null as unknown,
+      external: null as unknown,
+      final: null as unknown,
+    };
+    if (diagnosticsEnabled) finalDiagnostics.push(diagnosticTrace);
+    const verification = await enrichSupplier(
+      { title: candidate.title, url: candidate.url },
+      requestedProduct.value,
+      normalizedDeliveryRegion,
+      (enrichmentQuery, options) => tavilySearch(apiKey, enrichmentQuery, options),
+      diagnosticsEnabled ? (stage, payload) => {
+        if (stage === "official") officialCalls += 1;
+        else externalCalls += 1;
+        const rawResults = (payload.rawResults as TavilyResult[]).map(result => diagnosticRawResult(result));
+        const evaluations = payload.evaluations as Array<Record<string, unknown>>;
+        const loggedPayload = {
+          requestId,
+          ...payload,
+          rawResults,
+          productCandidates: evaluations.map(item => item.productCandidate).filter(Boolean),
+          moqCandidates: evaluations.map(item => item.moqCandidate).filter(Boolean),
+          priceCandidates: evaluations.map(item => item.priceCandidate).filter(Boolean),
+          supplierLocationCandidates: evaluations.map(item => item.supplierLocationCandidate).filter(Boolean),
+          deliveryEvidenceCandidates: evaluations.map(item => item.deliveryEvidenceCandidate).filter(Boolean),
+        };
+        diagnosticsLog(stage === "official" ? "OFFICIAL" : "EXTERNAL", loggedPayload);
+        diagnosticTrace[stage] = payload.result;
+      } : undefined,
+      criteria.maxMoq?.displayValue ?? null,
+    );
+    const fields = mergeEnrichment(primary, verification);
+    if (diagnosticsEnabled) diagnosticTrace.final = fields;
+    return {
+      title: candidate.title,
+      url: candidate.url,
+      content: candidate.content,
+      score: candidate.score,
+      product: fields.product,
+      country: fields.supplierLocation,
+      supplierLocation: fields.supplierLocation,
+      moq: fields.moq,
+      price: fields.price,
+      delivery: fields.delivery,
+    } satisfies SupplierSearchResult;
+  }));
+  const results = rankAndFilterByDelivery(enriched);
+
+  if (diagnosticsEnabled) {
+    for (const [candidateIndex, candidate] of enriched.entries()) {
+      const trace = finalDiagnostics.find(item => item.supplierUrl === candidate.url);
+      const rankingIndex = results.findIndex(result => result.url === candidate.url);
+      diagnosticsLog("FINAL", {
+        requestId,
+        supplierTitle: candidate.title,
+        primaryValues: trace?.primary ?? null,
+        officialValues: trace?.official ?? null,
+        externalValues: trace?.external ?? null,
+        finalMergedValues: trace?.final ?? candidate,
+        excludedBecauseNotAvailable: candidate.delivery.status === "not_available",
+        finalRankingPosition: rankingIndex < 0 ? null : rankingIndex + 1,
+        preFilterPosition: candidateIndex + 1,
+      });
+    }
+    diagnosticsLog("SUMMARY", {
+      requestId,
+      primaryRawCount: tavilyResults.length,
+      qualifiedCount: qualifiedResultCount,
+      productRelevantCount,
+      dedupedCount: candidates.length,
+      officialCalls,
+      externalCalls,
+      confirmedDeliveryCount: enriched.filter(item => item.delivery.status === "confirmed").length,
+      notConfirmedDeliveryCount: enriched.filter(item => item.delivery.status === "not_confirmed").length,
+      notAvailableCount: enriched.filter(item => item.delivery.status === "not_available").length,
+      returnedCount: results.length,
     });
   }
 
