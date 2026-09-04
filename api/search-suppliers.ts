@@ -1,5 +1,12 @@
-import { extractSupplierFields } from "./supplier-extraction";
+import { extractProduct, extractSupplierFields } from "./supplier-extraction";
 import { qualifySupplierCandidate } from "./supplier-qualification";
+import {
+  enrichSupplier,
+  mergeEnrichment,
+  rankAndFilterByDelivery,
+  type DeliveryVerification,
+  type EnrichmentSearchResult,
+} from "./supplier-enrichment";
 
 declare const process: {
   env: {
@@ -35,8 +42,10 @@ interface TavilyResult {
 interface SupplierSearchResult extends TavilyResult {
   product: string | null;
   country: string | null;
+  supplierLocation: string | null;
   moq: string | null;
   price: string | null;
+  delivery: DeliveryVerification;
 }
 
 function hostnameKey(url: string): string {
@@ -61,6 +70,33 @@ function isTavilyResult(value: unknown): value is TavilyResult {
     typeof result.score === "number" &&
     Number.isFinite(result.score)
   );
+}
+
+async function tavilySearch(
+  apiKey: string,
+  searchQuery: string,
+  options: { includeDomains?: string[]; maxResults: number },
+): Promise<EnrichmentSearchResult[]> {
+  const tavilyResponse = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: searchQuery,
+      search_depth: "basic",
+      topic: "general",
+      max_results: options.maxResults,
+      include_domains: options.includeDomains,
+      include_answer: false,
+      include_raw_content: false,
+      include_images: false,
+    }),
+  });
+  if (!tavilyResponse.ok) throw new Error("Tavily returned an error");
+  const data: unknown = await tavilyResponse.json();
+  if (data === null || typeof data !== "object" || Array.isArray(data)) throw new Error("Invalid Tavily response");
+  const results = (data as Record<string, unknown>).results;
+  if (!Array.isArray(results) || !results.every(isTavilyResult)) throw new Error("Invalid Tavily results");
+  return results;
 }
 
 export default async function handler(
@@ -112,6 +148,7 @@ export default async function handler(
 
   const normalizedQuery = query.trim();
   const normalizedDeliveryRegion = deliveryRegion.trim();
+  const requestedProduct = extractProduct(normalizedQuery, "", "");
   const searchQuery = [
     normalizedQuery,
     normalizedDeliveryRegion && `delivery region: ${normalizedDeliveryRegion}`,
@@ -122,25 +159,9 @@ export default async function handler(
     .filter(Boolean)
     .join(" ");
 
-  let tavilyResponse: Response;
-
+  let tavilyResults: TavilyResult[];
   try {
-    tavilyResponse = await fetch("https://api.tavily.com/search", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query: searchQuery,
-        search_depth: "basic",
-        topic: "general",
-        max_results: 5,
-        include_answer: false,
-        include_raw_content: false,
-        include_images: false,
-      }),
-    });
+    tavilyResults = await tavilySearch(apiKey, searchQuery, { maxResults: 5 });
   } catch {
     response.status(502).json({
       error: "Supplier search service is currently unavailable.",
@@ -148,42 +169,8 @@ export default async function handler(
     return;
   }
 
-  if (!tavilyResponse.ok) {
-    response.status(502).json({
-      error: "Supplier search service returned an error.",
-    });
-    return;
-  }
-
-  let tavilyData: unknown;
-
-  try {
-    tavilyData = await tavilyResponse.json();
-  } catch {
-    response.status(502).json({
-      error: "Supplier search service returned an invalid response.",
-    });
-    return;
-  }
-
-  if (tavilyData === null || typeof tavilyData !== "object" || Array.isArray(tavilyData)) {
-    response.status(502).json({
-      error: "Supplier search service returned an unexpected response.",
-    });
-    return;
-  }
-
-  const tavilyResults = (tavilyData as Record<string, unknown>).results;
-
-  if (!Array.isArray(tavilyResults) || !tavilyResults.every(isTavilyResult)) {
-    response.status(502).json({
-      error: "Supplier search service returned an unexpected response.",
-    });
-    return;
-  }
-
   const seenHostnames = new Set<string>();
-  const results: SupplierSearchResult[] = [];
+  const candidates: Array<TavilyResult & { fields: ReturnType<typeof extractSupplierFields> }> = [];
   const diagnosticsEnabled =
     process.env.VERCEL_ENV === "preview" &&
     process.env.SUPPLIER_SEARCH_DIAGNOSTICS === "true";
@@ -231,22 +218,47 @@ export default async function handler(
     if (!qualification.qualified) continue;
     qualifiedResultCount += 1;
 
+    const fields = extractSupplierFields(title, content, url);
+    // Supplier identity alone is insufficient: the primary evidence must also name the requested product.
+    if (!fields.product || !requestedProduct || fields.product.value !== requestedProduct.value) continue;
+
     const hostname = hostnameKey(url);
     if (seenHostnames.has(hostname)) continue;
 
     seenHostnames.add(hostname);
-    const fields = extractSupplierFields(title, content, url);
-    results.push({
-      title,
-      url,
-      content,
-      score,
-      product: fields.product?.value ?? null,
-      country: fields.country?.value ?? null,
-      moq: fields.moq?.value ?? null,
-      price: fields.price?.value ?? null,
-    });
+    candidates.push({ title, url, content, score, fields });
   }
+
+  const enriched = await Promise.all(candidates.map(async candidate => {
+    const primary = {
+      product: candidate.fields.product?.value ?? null,
+      moq: candidate.fields.moq?.value ?? null,
+      price: candidate.fields.price?.value ?? null,
+      // Medium country extraction may combine a city mention with a TLD; that is not reliable location evidence.
+      supplierLocation: candidate.fields.country?.confidence === "high" ? candidate.fields.country.value : null,
+      delivery: { region: normalizedDeliveryRegion, status: "not_confirmed" as const, evidence: null, sourceUrl: null, sourceType: null },
+    };
+    const verification = await enrichSupplier(
+      { title: candidate.title, url: candidate.url },
+      requestedProduct.value,
+      normalizedDeliveryRegion,
+      (enrichmentQuery, options) => tavilySearch(apiKey, enrichmentQuery, options),
+    );
+    const fields = mergeEnrichment(primary, verification);
+    return {
+      title: candidate.title,
+      url: candidate.url,
+      content: candidate.content,
+      score: candidate.score,
+      product: fields.product,
+      country: fields.supplierLocation,
+      supplierLocation: fields.supplierLocation,
+      moq: fields.moq,
+      price: fields.price,
+      delivery: fields.delivery,
+    } satisfies SupplierSearchResult;
+  }));
+  const results = rankAndFilterByDelivery(enriched);
 
   if (diagnosticsEnabled) {
     console.info("supplier_search_diagnostics", {
