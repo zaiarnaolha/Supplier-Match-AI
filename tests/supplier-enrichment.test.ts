@@ -135,14 +135,16 @@ test("official and external request failures leave a safe unconfirmed result", a
   });
 });
 
-test("unavailable suppliers are excluded and confirmed suppliers rank first", () => {
+test("only confirmed delivery passes the final filter, regardless of supplier MOQ or price", () => {
   const delivery = (status: "confirmed" | "not_confirmed" | "not_available") => ({
     region: "Ukraine", status, evidence: null, sourceUrl: null, sourceType: null,
   });
   const ranked = rankAndFilterByDelivery([
     { name: "unknown", score: 0.9, delivery: delivery("not_confirmed") },
     { name: "unavailable", score: 1, delivery: delivery("not_available") },
-    { name: "confirmed", score: 0.5, delivery: delivery("confirmed") },
+    { name: "confirmed", score: 0.5, moq: "50 кг", price: "900 ₴/кг", delivery: delivery("confirmed") },
   ]);
-  assert.deepEqual(ranked.map(item => item.name), ["confirmed", "unknown"]);
+  assert.deepEqual(ranked.map(item => item.name), ["confirmed"]);
+  assert.equal(ranked[0].moq, "50 кг", "supplier MOQ above the user's 20 кг maximum is not a hard filter");
+  assert.equal(ranked[0].price, "900 ₴/кг", "supplier price is not a hard filter");
 });
