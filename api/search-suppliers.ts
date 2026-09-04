@@ -4,6 +4,8 @@ import { qualifySupplierCandidate } from "./supplier-qualification";
 declare const process: {
   env: {
     TAVILY_API_KEY?: string;
+    SUPPLIER_SEARCH_DIAGNOSTICS?: string;
+    VERCEL_ENV?: string;
   };
 };
 
@@ -182,9 +184,33 @@ export default async function handler(
 
   const seenHostnames = new Set<string>();
   const results: SupplierSearchResult[] = [];
+  const diagnosticsEnabled =
+    process.env.VERCEL_ENV === "preview" &&
+    process.env.SUPPLIER_SEARCH_DIAGNOSTICS === "true";
+  const requestId = diagnosticsEnabled
+    ? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+    : null;
+  let qualifiedResultCount = 0;
 
-  for (const { title, url, content, score } of tavilyResults) {
-    if (!qualifySupplierCandidate(title, content, url).qualified) continue;
+  for (const [resultIndex, { title, url, content, score }] of tavilyResults.entries()) {
+    const qualification = qualifySupplierCandidate(title, content, url);
+
+    if (diagnosticsEnabled) {
+      console.info("supplier_search_qualification", {
+        requestId,
+        resultIndex,
+        title,
+        url,
+        content,
+        qualified: qualification.qualified,
+        reason: qualification.qualified ? null : qualification.reason,
+        confidence: qualification.qualified ? qualification.confidence : null,
+        evidence: qualification.qualified ? qualification.evidence : [],
+      });
+    }
+
+    if (!qualification.qualified) continue;
+    qualifiedResultCount += 1;
 
     const hostname = hostnameKey(url);
     if (seenHostnames.has(hostname)) continue;
@@ -200,6 +226,15 @@ export default async function handler(
       country: fields.country?.value ?? null,
       moq: fields.moq?.value ?? null,
       price: fields.price?.value ?? null,
+    });
+  }
+
+  if (diagnosticsEnabled) {
+    console.info("supplier_search_summary", {
+      requestId,
+      rawResultCount: tavilyResults.length,
+      qualifiedResultCount,
+      returnedResultCount: results.length,
     });
   }
 
