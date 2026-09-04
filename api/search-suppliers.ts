@@ -196,19 +196,7 @@ export default async function handler(
     const qualification = qualifySupplierCandidate(title, content, url);
 
     if (diagnosticsEnabled) {
-      if (qualification.qualified) {
-        console.info("supplier_search_qualification", {
-          requestId,
-          resultIndex,
-          title,
-          url,
-          content,
-          qualified: true,
-          reason: null,
-          confidence: qualification.confidence,
-          evidence: qualification.evidence,
-        });
-      } else {
+      if ("reason" in qualification) {
         console.info("supplier_search_qualification", {
           requestId,
           resultIndex,
@@ -219,6 +207,18 @@ export default async function handler(
           reason: qualification.reason,
           confidence: null,
           evidence: [],
+        });
+      } else {
+        console.info("supplier_search_qualification", {
+          requestId,
+          resultIndex,
+          title,
+          url,
+          content,
+          qualified: true,
+          reason: null,
+          confidence: qualification.confidence,
+          evidence: qualification.evidence,
         });
       }
     }
