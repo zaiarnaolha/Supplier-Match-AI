@@ -1,0 +1,74 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { qualifySupplierCandidate } from "../api/supplier-qualification.ts";
+import { supplierQualificationSnippets } from "./fixtures/supplier-qualification-snippets.ts";
+
+function qualify(fixture: { title: string; content: string; url: string }) {
+  return qualifySupplierCandidate(fixture.title, fixture.content, fixture.url);
+}
+
+test("qualifies a concrete supplier", () => {
+  const result = qualify(supplierQualificationSnippets.supplier);
+  assert.equal(result.qualified, true);
+  if (result.qualified) assert.equal(result.confidence, "high");
+});
+
+test("qualifies a manufacturer with explicit self-identification", () => {
+  assert.equal(qualify(supplierQualificationSnippets.manufacturer).qualified, true);
+});
+
+test("qualifies a concrete wholesale store", () => {
+  assert.equal(qualify(supplierQualificationSnippets.wholesaleStore).qualified, true);
+});
+
+test("rejects the real rating and top-list scenario", () => {
+  assert.equal(qualify(supplierQualificationSnippets.ratingArticle).qualified, false);
+});
+
+test("rejects an informational or news article", () => {
+  assert.equal(qualify(supplierQualificationSnippets.newsArticle).qualified, false);
+});
+
+test("rejects a how-to guide even when it mentions manufacturers", () => {
+  assert.equal(qualify(supplierQualificationSnippets.howToChoose).qualified, false);
+});
+
+test("rejects an aggregating Prom.ua marketplace category", () => {
+  assert.equal(qualify(supplierQualificationSnippets.promCategory).qualified, false);
+});
+
+test("rejects a product page without a concrete seller identity", () => {
+  assert.equal(qualify(supplierQualificationSnippets.ambiguousProduct).qualified, false);
+});
+
+test("does not qualify from a buy word or product mention alone", () => {
+  assert.equal(qualifySupplierCandidate(
+    "Кава в зернах — купити онлайн",
+    "Великий вибір товарів.",
+    "https://example.com/catalog/coffee",
+  ).qualified, false);
+});
+
+test("requires business identity and commercial activity for medium confidence", () => {
+  const result = qualifySupplierCandidate(
+    "Про компанію Example Coffee",
+    "Каталог продукції та ціни для кав'ярень.",
+    "https://example.com/catalog/coffee",
+  );
+  assert.equal(result.qualified, true);
+  if (result.qualified) assert.equal(result.confidence, "medium");
+
+  assert.equal(qualifySupplierCandidate(
+    "Про компанію Example Coffee",
+    "Історія нашої команди.",
+    "https://example.com/about",
+  ).qualified, false);
+});
+
+test("editorial evidence vetoes supplier words in article content", () => {
+  assert.equal(qualifySupplierCandidate(
+    "Топ-10 постачальників кави",
+    "Огляд виробників та оптових магазинів.",
+    "https://example.com/articles/top-suppliers",
+  ).qualified, false);
+});
