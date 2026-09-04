@@ -95,7 +95,9 @@ export default async function handler(
   const searchQuery = [
     normalizedQuery,
     normalizedDeliveryRegion && `delivery region: ${normalizedDeliveryRegion}`,
-    "wholesale suppliers",
+    "Find actual suppliers, manufacturers, distributors, or wholesalers that sell or distribute the requested product.",
+    "Prioritize official supplier or manufacturer websites, product catalog pages, and wholesale or B2B supplier pages.",
+    "Exclude blog posts, news articles, guides, educational content, how to choose a supplier articles, and general informational pages.",
   ]
     .filter(Boolean)
     .join(" ");
