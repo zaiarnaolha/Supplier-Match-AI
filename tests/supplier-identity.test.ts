@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { canonicalSupplierDomain, identifySupplier, supplierIdentityKey } from "../api/supplier-identity.ts";
+import { asDiscoveryEvidence, resolveSupplierIdentities } from "../api/supplier-discovery.ts";
 
 test("supplier subdomains share one canonical identity", () => {
   assert.equal(canonicalSupplierDomain("https://store.gemini.ua/catalog"), "gemini.ua");
@@ -74,4 +75,49 @@ test("generic product page resolves through strong company metadata", () => {
   const identity = identifySupplier("Купити каву оптом", "Компанія: Royal Life. Кава в зернах для HoReCa.", "https://royal-life.ua/wholesale");
   assert.equal(identity?.name, "Royal Life");
   assert.equal(identity?.identitySource, "company_label");
+});
+
+test("Instagram page titles cannot become official supplier identities", () => {
+  assert.equal(identifySupplier(
+    "TORBAFOOD (@torbafood) • Instagram photos and videos",
+    "Кава в зернах оптом для HoReCa.",
+    "https://www.instagram.com/reel/example/",
+  ), null);
+});
+
+test("platform evidence needs an explicit seller or company identity", () => {
+  const identity = identifySupplier(
+    "Кава для HoReCa • Instagram",
+    "Бренд: TORBAFOOD | Кава в зернах оптом.",
+    "https://instagram.com/p/example/",
+  );
+  assert.equal(identity?.name, "TORBAFOOD");
+  assert.equal(identity?.sourceType, "external");
+  assert.equal(identity?.officialUrl, null);
+});
+
+test("Leader Coffee resolves from official domain-matched brand and B2B evidence", () => {
+  const evidence = asDiscoveryEvidence([{
+    title: "Кава в зернах оптом | Leader Coffee",
+    content: "Leader Coffee пропонує оптові поставки кави для HoReCa.",
+    url: "https://leadercoffee.com.ua/coffee/wholesale",
+    score: 0.9,
+  }], "primary");
+  const resolved = resolveSupplierIdentities(evidence);
+  assert.equal(resolved.suppliers.length, 1);
+  assert.equal(resolved.suppliers[0].identity.name, "Leader Coffee");
+  assert.equal(resolved.suppliers[0].identity.domain, "leadercoffee.com.ua");
+});
+
+test("numeric domain fallback is not a strong display identity without brand evidence", () => {
+  assert.equal(identifySupplier(
+    "Кава в зернах оптом",
+    "Оптові поставки кави для HoReCa.",
+    "https://808.com.ua/catalog/coffee",
+  ), null);
+  assert.equal(identifySupplier(
+    "Кава в зернах оптом",
+    "Компанія: 808 Coffee. Оптові поставки кави для HoReCa.",
+    "https://808.com.ua/catalog/coffee",
+  )?.name, "808 Coffee");
 });

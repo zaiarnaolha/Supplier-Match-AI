@@ -47,6 +47,24 @@ test("a country mention without delivery context does not confirm delivery", () 
   assert.equal(extractVerifiedEnrichment([result("Whole bean coffee roasted in Ukraine.")], context).delivery.status, "not_confirmed");
 });
 
+test("same-domain office-paper delivery cannot confirm coffee delivery", () => {
+  const enriched = extractVerifiedEnrichment([result(
+    "Офісний папір А4. Доставляємо по всій Україні.",
+    { title: "Папір офісний А4", url: "https://exact-coffee.example/catalog/office-paper" },
+  )], context);
+  assert.equal(enriched.product, null);
+  assert.equal(enriched.delivery.status, "not_confirmed");
+});
+
+test("a clearly catalogue-wide shipping policy can confirm delivery", () => {
+  const enriched = extractVerifiedEnrichment([result(
+    "Shipping to Ukraine applies to all products and orders in our catalogue.",
+    { title: "Shipping policy", url: "https://exact-coffee.example/shipping" },
+  )], context);
+  assert.equal(enriched.product, null);
+  assert.equal(enriched.delivery.status, "confirmed");
+});
+
 test("supplier location does not imply delivery and delivery region does not imply location", () => {
   const located = extractVerifiedEnrichment([result("Whole bean coffee. Legal address: Warsaw, Poland.")], context);
   assert.equal(located.supplierLocation, "Warsaw, Poland");
@@ -89,6 +107,30 @@ test("MOQ and concrete price require explicit evidence on a product-relevant res
   assert.equal(enriched.product, "Кава в зернах");
   assert.equal(enriched.moq, "20 кг");
   assert.equal(enriched.price, "618 ₴/кг");
+});
+
+test("identity-bound product-relevant discovery evidence contributes MOQ and price", async () => {
+  const discovery = result(
+    "Кава в зернах для бізнесу. Мінімальне замовлення 12 кг. Оптова ціна 620 грн/кг.",
+    { title: "Exact Coffee — кава оптом", url: "https://exact-coffee.example/catalog/coffee" },
+  );
+  let calls = 0;
+  const enriched = await enrichSupplier(
+    { title: "Exact Coffee", url: discovery.url, domain: "exact-coffee.example", evidenceSources: [discovery] },
+    "Кава в зернах", "Ukraine", async () => { calls += 1; return []; },
+  );
+  assert.equal(calls, 2);
+  assert.equal(enriched.moq, "12 кг");
+  assert.equal(enriched.price, "620 грн/кг");
+});
+
+test("minimum order value is not extracted as product price", () => {
+  const enriched = extractVerifiedEnrichment([result(
+    "Кава в зернах оптом. Мінімальна вартість замовлення 500 грн.",
+    { title: "Royal Life — кава для бізнесу", url: "https://royal-life.ua/coffee" },
+  )], { ...context, supplierName: "Royal Life", supplierHostname: "royal-life.ua" });
+  assert.equal(enriched.product, "Кава в зернах");
+  assert.equal(enriched.price, null);
 });
 
 test("package size is not MOQ and vague pricing is not a price", () => {

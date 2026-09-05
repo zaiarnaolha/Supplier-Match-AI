@@ -104,6 +104,13 @@ function marketplaceAggregation(text: string, hostname: string, pathname: string
   return Boolean(aggregationEvidence || categoryPath || searchPath);
 }
 
+function domainBrandEvidence(text: string, hostname: string): string | null {
+  const label = hostname.split(".")[0]?.replace(/[^\p{L}\p{N}]+/gu, "") ?? "";
+  if (label.length < 4 || !/\p{L}/u.test(label)) return null;
+  const compactText = text.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  return compactText.includes(label.toLocaleLowerCase()) ? label : null;
+}
+
 export function qualifySupplierCandidate(
   title: string,
   content: string,
@@ -155,6 +162,13 @@ export function qualifySupplierCandidate(
   if (b2bEvidence.length >= 2 && !editorialTitle && !editorialUrl && !informational && !aggregation
     && !marketplaceAggregation(text, hostname, pathname)) {
     return { qualified: true, confidence: "high", evidence: b2bEvidence };
+  }
+
+  // An official site's stable brand text matching its registrable domain is
+  // concrete business identity evidence when paired with explicit B2B activity.
+  const domainBrand = domainBrandEvidence(text, hostname);
+  if (domainBrand && commercialActivity && b2b) {
+    return { qualified: true, confidence: "medium", evidence: [...new Set([domainBrand, commercialActivity, b2b])] };
   }
 
   return { qualified: false, reason: "insufficient concrete supplier evidence" };

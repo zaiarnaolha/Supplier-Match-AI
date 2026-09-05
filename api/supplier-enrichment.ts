@@ -47,9 +47,19 @@ const LOCATION_LABEL = /(?:legal|registered|contact|business)\s+address|headquar
 const LOCATION_VALUE = /(?:[\p{L}.'’ -]+,\s*)?(?:ukraine|україна|poland|польща|germany|німеччина|romania|румунія|slovakia|словаччина|czechia|чехія)/iu;
 const CHROME_GARBAGE = /(?:карта\s+сайту|site\s*map|breadcrumbs?|меню|menu|контакти\s+м|©|privacy|політика)/iu;
 const MARKETPLACE_NETWORK = /(?:доставк\p{L}*\s+(?:rozetka|розетка)|(?:rozetka|розетка)\s+доставк\p{L}*|marketplace\s+delivery\s+network|доступн\p{L}*\s+(?:для\s+замовлення\s+)?(?:з|із)\s+доставк\p{L}*|nationwide\s+(?:marketplace\s+)?delivery)/iu;
+const CATALOGUE_WIDE_DELIVERY = /(?:ус(?:і|ю)\s+(?:товари|продукці\p{L}*|замовлення)|весь\s+(?:каталог|асортимент)|для\s+(?:всіх|усіх)\s+(?:товарів|замовлень)|all\s+(?:products|catalog(?:ue)?\s+items|orders)|entire\s+(?:catalog(?:ue)?|range)|catalog(?:ue)?-wide)[^.!?]{0,90}(?:достав|ship)|(?:достав|ship)[^.!?]{0,90}(?:ус(?:і|ю)\s+(?:товари|продукці\p{L}*|замовлення)|весь\s+(?:каталог|асортимент)|для\s+(?:всіх|усіх)\s+(?:товарів|замовлень)|all\s+(?:products|catalog(?:ue)?\s+items|orders)|entire\s+(?:catalog(?:ue)?|range)|catalog(?:ue)?-wide)/iu;
+const OTHER_PRODUCT_TITLE = /(?:офісн\p{L}*\s+папір|office\s+paper|мий(?:ний|ні)\s+засіб|пральн\p{L}*\s+порошок|detergent|\btea\b|\bчай\b)/iu;
 
 function textOf(result: EnrichmentSearchResult): string {
   return `${result.title}. ${result.content}`.replace(/\s+/g, " ").trim();
+}
+
+function productEvidence(result: EnrichmentSearchResult): ExtractedField {
+  const product = extractProduct(result.title, result.content, result.url);
+  // Search snippets can contain navigation/footer text for other catalogue items.
+  // An explicitly different product in the page title wins over such incidental text.
+  return product && OTHER_PRODUCT_TITLE.test(result.title)
+    && !extractProduct(result.title, "", result.url) ? null : product;
 }
 
 function normalizeIdentity(value: string): string {
@@ -146,13 +156,14 @@ function diagnosticEvaluation(
   const text = textOf(result);
   const identityMatchedBy = identityMatchKind(result, context.supplierName, context.supplierHostname);
   const genericRejected = GENERIC_EXTERNAL.test(text);
-  const product = extractProduct(result.title, result.content, result.url);
+  const product = productEvidence(result);
   const moq = product ? extractMoq(result.title, result.content) : null;
   const price = product ? extractPrice(result.title, result.content, product, result.url) : null;
   const location = explicitLocation(result);
   const regionMatched = regionPattern(context.deliveryRegion)?.test(text) ?? false;
   const deliveryContextMatched = DELIVERY_WORD.test(text);
-  const explicitDelivery = deliverySignal(result, context.deliveryRegion);
+  const deliveryApplies = Boolean(product) || CATALOGUE_WIDE_DELIVERY.test(text);
+  const explicitDelivery = deliveryApplies ? deliverySignal(result, context.deliveryRegion) : null;
   const marketplaceNetworkDelivery = context.sourceType === "marketplace"
     ? marketplaceDeliveryNetworkSignal(result, context.deliveryRegion) : null;
   const delivery = marketplaceNetworkDelivery ?? explicitDelivery;
@@ -169,6 +180,7 @@ function diagnosticEvaluation(
   else if (context.sourceType === "external" && !identityMatched) rejectionReason = "supplier identity not matched";
   else if (context.sourceType === "marketplace" && !marketplaceSellerMatched) rejectionReason = "marketplace seller identity not matched";
   else if (context.sourceType === "marketplace" && !product) rejectionReason = "marketplace listing does not match requested product";
+  else if (!deliveryApplies) rejectionReason = "delivery evidence does not apply to the requested product or entire catalogue";
   else if (!regionMatched) rejectionReason = "deliveryRegion not matched";
   else if (!deliveryContextMatched) rejectionReason = "delivery context not matched";
 
@@ -211,7 +223,7 @@ export function extractVerifiedEnrichment(
     : context.sourceType === "marketplace"
       ? !GENERIC_EXTERNAL.test(textOf(result))
         && marketplaceSellerIdentityPresent(result, context.supplierName)
-        && Boolean(extractProduct(result.title, result.content, result.url))
+        && Boolean(productEvidence(result))
       : !GENERIC_EXTERNAL.test(textOf(result)) && supplierIdentityPresent(result, context.supplierName, context.supplierHostname));
   const productFields: SourcedField[] = [];
   const moqFields: SourcedField[] = [];
@@ -220,7 +232,7 @@ export function extractVerifiedEnrichment(
   const deliverySignals: Array<{ negative: boolean; evidence: string; url: string; method: "explicit" | "network" }> = [];
 
   for (const result of eligible) {
-    const product = extractProduct(result.title, result.content, result.url);
+    const product = productEvidence(result);
     if (product) productFields.push({ ...product, sourceUrl: result.url });
     // MOQ and price require product evidence in this exact result, avoiding values for another product.
     if (product) {
@@ -231,7 +243,8 @@ export function extractVerifiedEnrichment(
     }
     const location = explicitLocation(result);
     if (location) locationFields.push(location);
-    const explicitSignal = deliverySignal(result, context.deliveryRegion);
+    const deliveryApplies = Boolean(product) || CATALOGUE_WIDE_DELIVERY.test(textOf(result));
+    const explicitSignal = deliveryApplies ? deliverySignal(result, context.deliveryRegion) : null;
     const networkSignal = context.sourceType === "marketplace"
       ? marketplaceDeliveryNetworkSignal(result, context.deliveryRegion) : null;
     const signal = networkSignal ?? explicitSignal;

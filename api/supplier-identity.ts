@@ -12,8 +12,9 @@ export interface SupplierIdentity {
 
 const MARKETPLACES = ["prom.ua", "rozetka.com.ua", "agrotorg.net", "agrotorg.com", "alibaba.com", "amazon.com", "etsy.com"];
 const DIRECTORY_HOSTS = ["all.biz", "europages.com", "kompass.com"];
+const PLATFORM_HOSTS = ["instagram.com", "facebook.com", "threads.net", "tiktok.com", "youtube.com", "linkedin.com", "pinterest.com", "x.com", "twitter.com", "t.me", "vk.com"];
 const PLATFORM_NAMES = /^(?:prom(?:\.ua)?|agrotorg|alibaba|amazon|etsy|all\.biz|europages|kompass)$/iu;
-const SELLER_LABEL = /(?:продавець|постачальник|компанія|виробник|seller|supplier|sold\s+by|company|manufacturer)\s*[:—-]\s*([\p{L}\p{N}!][\p{L}\p{N}!&'’"“” _-]{1,70}?)(?=\s*[|.;]|$)/iu;
+const SELLER_LABEL = /(?:продавець|постачальник|компанія|виробник|бренд|seller|supplier|sold\s+by|company|manufacturer|brand)\s*[:—-]\s*([\p{L}\p{N}!][\p{L}\p{N}!&'’"“” _-]{1,70}?)(?=\s*[|.;]|$)/iu;
 const COMPANY_LABEL = /(?:brand|бренд|компанія|company|seller|продавець)\s*(?:name)?\s*[:—-]\s*([\p{L}\p{N}!][\p{L}\p{N}!&'’"“” _-]{1,70}?)(?=\s*[|.;]|$)/iu;
 const OFFICIAL_SITE = /(?:офіційний\s+сайт|сайт\s+(?:компанії|продавця)|official\s+(?:web)?site|company\s+(?:web)?site)\s*[:—-]?\s*(https?:\/\/[^\s,;)]+|(?:www\.)?[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s,;)]*)?)/iu;
 const PRODUCT_TITLE = /(?:кава|coffee|чай|tea|купити|ціна|price|catalog|каталог|товар|product)/iu;
@@ -39,6 +40,8 @@ export function sourceTypeForUrl(url: string): DiscoverySourceType {
   const pathname = (() => { try { return new URL(url).pathname; } catch { return ""; } })();
   if (MARKETPLACES.includes(hostname)) return "marketplace";
   if (DIRECTORY_HOSTS.includes(hostname)) return "directory";
+  // Social and publishing platforms are evidence hosts, never supplier websites.
+  if (PLATFORM_HOSTS.includes(hostname)) return "external";
   if (/\/(?:blog|news|articles?|guides?|reviews?)(?:\/|$)/iu.test(pathname)) return "article";
   return "official";
 }
@@ -65,7 +68,7 @@ function urlFromMention(value: string): string {
 export function identifySupplier(title: string, content: string, url: string): SupplierIdentity | null {
   const sourceType = sourceTypeForUrl(url);
   const text = `${title}. ${content}`.replace(/\s+/g, " ");
-  if (sourceType === "marketplace" || sourceType === "directory" || sourceType === "article") {
+  if (sourceType !== "official") {
     const seller = text.match(SELLER_LABEL)?.[1];
     if (!seller) return null;
     const name = cleanName(seller);
@@ -82,13 +85,18 @@ export function identifySupplier(title: string, content: string, url: string): S
   const domainLabel = domain.split(".")[0] ?? "";
   const labeledName = text.match(COMPANY_LABEL)?.[1];
   const officialName = text.match(new RegExp(`(?:^|[^\\p{L}\\p{N}])(${domainLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?=$|[^\\p{L}\\p{N}])`, "iu"))?.[1];
+  const domainBrand = title.split(/\s*(?:\||[–—]|\s-\s)\s*/u).map(cleanName).find(candidate =>
+    validConcreteName(candidate)
+      && candidate.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "") === domainLabel.replace(/[^\p{L}\p{N}]+/gu, ""));
   const name = labeledName && validConcreteName(labeledName) ? cleanName(labeledName)
     : validConcreteName(titleName) && !PRODUCT_TITLE.test(titleName) ? titleName
+      : domainBrand ? domainBrand
       : officialName && validConcreteName(officialName) ? cleanName(officialName)
         : nameFromDomain(domain);
-  if (!domain || !validConcreteName(name)) return null;
+  const fallbackOnly = !labeledName && !(validConcreteName(titleName) && !PRODUCT_TITLE.test(titleName)) && !domainBrand && !officialName;
+  if (!domain || !validConcreteName(name) || (fallbackOnly && !/\p{L}/u.test(domainLabel))) return null;
   return { name, domain, officialUrl: url, sourceType, aliases: [...new Set([name, domainLabel])],
-    identitySource: labeledName ? "company_label" : "official_domain", confidence: labeledName ? "high" : "medium" };
+    identitySource: labeledName ? "company_label" : "official_domain", confidence: labeledName || domainBrand ? "high" : "medium" };
 }
 
 export function supplierIdentityKey(identity: SupplierIdentity): string {
