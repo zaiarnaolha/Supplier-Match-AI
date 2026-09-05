@@ -26,6 +26,7 @@ const QUANTITY = /(?:від\s+|from\s+)?\d+(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[
 const PRICE_MARKER = /(?:оптова\s+ціна|wholesale\s+price|ціна|price|вартість)/giu;
 const MONEY = /(?:від\s+|from\s+)?(?:(?:[$€]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?)?)|(?:\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?)?\s*(?:грн|₴|uah|usd|eur)))(?:\s*\/\s*(?:кг|kg|шт\.?|pcs?|л|l))?/giu;
 const NON_PRODUCT_PAYMENT = /(?:безкоштовн\p{L}*\s+достав|доставк\p{L}*|shipping|free\s+shipping|delivery|купон|coupon|membership|підписк|subscription|комісі|commission|депозит|deposit)/iu;
+const ORDER_VALUE = /(?:мінімальн\p{L}*\s+(?:вартість|сума)\s+замовлення|minimum\s+order\s+(?:value|amount)|order\s+minimum)/iu;
 const UNAMBIGUOUS_WHOLESALE_COFFEE = /(?:кава[^.!?]{0,55}(?:оптом|гуртом|оптов\p{L}*|постачальник|виробник|для\s+бізнес(?:у|ів)|horeca)|(?:оптом|гуртом|оптов\p{L}*|постачальник|виробник|horeca)[^.!?]{0,55}кава)/iu;
 
 function normalized(value: string): string { return value.toLocaleLowerCase().replace(/[’`]/g, "'").replace(/\s+/g, " ").trim(); }
@@ -105,13 +106,13 @@ export function extractPrice(title: string, content: string, product: ExtractedF
     const nextPeriod = text.indexOf(".", markerIndex);
     const sentenceEnd = nextPeriod < 0 ? text.length : nextPeriod;
     const nearby = text.slice(sentenceStart, sentenceEnd).trim();
-    if (NON_PRODUCT_PAYMENT.test(nearby)) continue;
+    if (NON_PRODUCT_PAYMENT.test(nearby) || ORDER_VALUE.test(nearby)) continue;
     const prices = [...nearby.matchAll(MONEY)];
     if (prices.length === 1) findings.push({ value: cleanPrice(prices[0][0]), evidence: nearby.trim() });
   }
   if (findings.length === 0 && product) {
     for (const sentence of text.split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
-      if (NON_PRODUCT_PAYMENT.test(sentence) || !extractProduct(sentence, "", url)) continue;
+      if (NON_PRODUCT_PAYMENT.test(sentence) || ORDER_VALUE.test(sentence) || !extractProduct(sentence, "", url)) continue;
       const prices = [...sentence.matchAll(MONEY)];
       if (prices.length === 1) findings.push({ value: cleanPrice(prices[0][0]), evidence: sentence.trim() });
     }
@@ -120,7 +121,7 @@ export function extractPrice(title: string, content: string, product: ExtractedF
   try { path = new URL(url).pathname; } catch { /* Invalid URLs cannot establish product-page context. */ }
   if (findings.length === 0 && product && path !== "/") {
     const titlePrices = [...title.matchAll(MONEY)];
-    if (titlePrices.length === 1 && !NON_PRODUCT_PAYMENT.test(title)) findings.push({ value: cleanPrice(titlePrices[0][0]), evidence: title.trim() });
+    if (titlePrices.length === 1 && !NON_PRODUCT_PAYMENT.test(title) && !ORDER_VALUE.test(title)) findings.push({ value: cleanPrice(titlePrices[0][0]), evidence: title.trim() });
   }
   const distinct = new Map(findings.map(item => [item.value.toLocaleLowerCase(), item]));
   if (distinct.size !== 1) return null;
