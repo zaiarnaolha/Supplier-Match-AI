@@ -3,7 +3,7 @@ import test from "node:test";
 import handler from "../api/search-suppliers.ts";
 import { buildSupplierSearchRequest } from "../shared/supplier-search-criteria.ts";
 
-type Payload = { query?: string; include_domains?: string[] };
+type Payload = { query?: string; include_domains?: string[]; max_results?: number };
 
 function tavily(results: unknown[]): Response {
   return new Response(JSON.stringify({ results }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -148,7 +148,7 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
     assert.match(summaryLine, /"primaryRawCount":1/);
     assert.match(summaryLine, /"additionalRawCount":1/);
     assert.match(summaryLine, /"combinedRawCount":3/);
-    assert.match(summaryLine, /"additionalTriggerReason":"resolved unique suppliers 1 is below 5"/);
+    assert.match(summaryLine, /"additionalTriggerReason":"resolved unique suppliers 1 is below 8"/);
     assert.match(summaryLine, /"officialCalls":1/);
     assert.match(summaryLine, /"externalCalls":0/);
     assert.match(summaryLine, /"returnedCount":1/);
@@ -214,16 +214,16 @@ test("control criteria reach backend and target both enrichment queries without 
   }
 });
 
-test("fewer than five viable identities trigger exactly one additional discovery and combined identity dedupe", async () => {
+test("fewer than eight resolved identities trigger all three bounded discovery passes with maxResults 10", async () => {
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.TAVILY_API_KEY;
-  const discoveryQueries: string[] = [];
+  const discoveryPayloads: Payload[] = [];
   process.env.TAVILY_API_KEY = "test-key";
   globalThis.fetch = async (_input, init) => {
     const payload = JSON.parse(String(init?.body)) as Payload;
     if (!payload.include_domains && !payload.query?.startsWith('"')) {
-      discoveryQueries.push(payload.query ?? "");
-      if (discoveryQueries.length === 1) return tavily([
+      discoveryPayloads.push(payload);
+      if (discoveryPayloads.length === 1) return tavily([
         supplier("https://gemini.ua/coffee", 0.9),
         supplier("https://store.gemini.ua/wholesale", 0.8),
       ]);
@@ -243,8 +243,9 @@ test("fewer than five viable identities trigger exactly one additional discovery
   try {
     const response = await invoke();
     assert.equal(response.statusCode, 200);
-    assert.equal(discoveryQueries.length, 3, "discovery is bounded to primary, commercial, and complementary passes");
-    assert.match(discoveryQueries[1], /different commercial intent/);
+    assert.equal(discoveryPayloads.length, 3, "discovery is bounded to primary, commercial, and complementary passes");
+    assert.ok(discoveryPayloads.every(payload => payload.max_results === 10), "every discovery pass requests 10 results");
+    assert.match(discoveryPayloads[1].query ?? "", /different commercial intent/);
     assert.equal(response.responseBody.results.length, 2);
     assert.equal(response.responseBody.results.filter(result => result.supplierDomain === "gemini.ua").length, 1);
   } finally {
@@ -253,7 +254,41 @@ test("fewer than five viable identities trigger exactly one additional discovery
   }
 });
 
-test("five viable unique suppliers do not trigger additional discovery", async () => {
+test("a product page reaches identity resolution before supplier-specific product gating", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  let calls = 0;
+  process.env.TAVILY_API_KEY = "test-key";
+  globalThis.fetch = async (_input, init) => {
+    calls += 1;
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    if (calls === 1) return tavily([{
+      title: "Wholesale partnership",
+      url: "https://exact-coffee.example/products/offer",
+      content: "Компанія: Exact Coffee. Наша компанія — постачальник для HoReCa та B2B клієнтів оптом.",
+      score: 0.9,
+    }]);
+    if (!payload.include_domains) return tavily([]);
+    return tavily([{
+      title: "Exact Coffee beans and delivery",
+      url: "https://exact-coffee.example/catalog/beans",
+      content: "Кава в зернах для кав'ярень. Доставка по Україні.",
+      score: 0.9,
+    }]);
+  };
+  try {
+    const response = await invoke();
+    assert.equal(calls, 4);
+    assert.equal(response.responseBody.results.length, 1);
+    assert.equal(response.responseBody.results[0].title, "Exact Coffee");
+    assert.equal(response.responseBody.results[0].product, "Кава в зернах");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+  }
+});
+
+test("eight resolved identities in primary discovery stop expansion", async () => {
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.TAVILY_API_KEY;
   let discoveryCalls = 0;
@@ -262,7 +297,7 @@ test("five viable unique suppliers do not trigger additional discovery", async (
     const payload = JSON.parse(String(init?.body)) as Payload;
     if (!payload.include_domains && !payload.query?.startsWith('"')) {
       discoveryCalls += 1;
-      return tavily(Array.from({ length: 5 }, (_, index) => ({
+      return tavily(Array.from({ length: 8 }, (_, index) => ({
         title: `Coffee Supplier ${index + 1}`,
         url: `https://supplier-${index + 1}.example/wholesale`,
         content: "Наша компанія — постачальник. Кава в зернах оптом для бізнесу.",
@@ -279,7 +314,39 @@ test("five viable unique suppliers do not trigger additional discovery", async (
     const response = await invoke();
     assert.equal(response.statusCode, 200);
     assert.equal(discoveryCalls, 1);
-    assert.equal(response.responseBody.results.length, 5);
+    assert.equal(response.responseBody.results.length, 8);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+  }
+});
+
+test("additional discovery reaching eight resolved identities skips complementary discovery", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  const discoveryPayloads: Payload[] = [];
+  process.env.TAVILY_API_KEY = "test-key";
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    if (!payload.include_domains && !payload.query?.startsWith('"')) {
+      discoveryPayloads.push(payload);
+      const offset = discoveryPayloads.length === 1 ? 0 : 7;
+      const count = discoveryPayloads.length === 1 ? 7 : 1;
+      return tavily(Array.from({ length: count }, (_, index) => ({
+        title: `Coffee Supplier ${offset + index + 1}`,
+        url: `https://supplier-${offset + index + 1}.example/wholesale`,
+        content: "Наша компанія — постачальник. Кава в зернах оптом для бізнесу.",
+        score: 0.9,
+      })));
+    }
+    const domain = payload.include_domains?.[0] ?? "unknown.example";
+    return tavily([{ title: "Delivery", url: `https://${domain}/delivery`, content: "Кава в зернах. Доставка по Україні.", score: 0.8 }]);
+  };
+  try {
+    const response = await invoke();
+    assert.equal(discoveryPayloads.length, 2);
+    assert.ok(discoveryPayloads.every(payload => payload.max_results === 10));
+    assert.equal(response.responseBody.results.length, 8);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;

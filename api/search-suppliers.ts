@@ -54,6 +54,9 @@ interface SupplierSearchResult extends TavilyResult {
   delivery: DeliveryVerification;
 }
 
+const DISCOVERY_EXPANSION_TARGET = 8;
+const DISCOVERY_MAX_RESULTS = 10;
+
 function hostnameKey(url: string): string {
   try {
     return new URL(url).hostname.toLocaleLowerCase().replace(/^www\./, "");
@@ -219,7 +222,7 @@ export default async function handler(
 
   let primaryResults: TavilyResult[];
   try {
-    primaryResults = await tavilySearch(apiKey, searchQuery, { maxResults: 8 });
+    primaryResults = await tavilySearch(apiKey, searchQuery, { maxResults: DISCOVERY_MAX_RESULTS });
   } catch {
     response.status(502).json({
       error: "Supplier search service is currently unavailable.",
@@ -233,9 +236,9 @@ export default async function handler(
     : null;
   const primaryEvidence = asDiscoveryEvidence(primaryResults, "primary");
   const primaryEvaluation = resolveSupplierIdentities(primaryEvidence);
-  const additionalTriggered = primaryEvaluation.suppliers.length < 5;
+  const additionalTriggered = primaryEvaluation.suppliers.length < DISCOVERY_EXPANSION_TARGET;
   const additionalTriggerReason = additionalTriggered
-    ? `resolved unique suppliers ${primaryEvaluation.suppliers.length} is below 5`
+    ? `resolved unique suppliers ${primaryEvaluation.suppliers.length} is below ${DISCOVERY_EXPANSION_TARGET}`
     : null;
   const additionalQuery = additionalTriggered
     ? buildAdditionalMarketAwareDiscoveryQuery(criteria.product ?? normalizedQuery, normalizedDeliveryRegion)
@@ -243,7 +246,7 @@ export default async function handler(
   let additionalResults: TavilyResult[] = [];
   if (additionalQuery) {
     try {
-      additionalResults = await tavilySearch(apiKey, additionalQuery, { maxResults: 8 });
+      additionalResults = await tavilySearch(apiKey, additionalQuery, { maxResults: DISCOVERY_MAX_RESULTS });
     } catch {
       // The bounded supplemental attempt is best-effort; primary discovery remains usable.
       additionalResults = [];
@@ -251,12 +254,12 @@ export default async function handler(
   }
   const firstTwoEvidence = [...primaryEvidence, ...asDiscoveryEvidence(additionalResults, "commercial")];
   const firstTwoEvaluation = resolveSupplierIdentities(firstTwoEvidence);
-  const complementaryTriggered = firstTwoEvaluation.suppliers.length < 5;
+  const complementaryTriggered = firstTwoEvaluation.suppliers.length < DISCOVERY_EXPANSION_TARGET;
   const complementaryQuery = complementaryTriggered
     ? buildComplementaryMarketAwareDiscoveryQuery(criteria.product ?? normalizedQuery, normalizedDeliveryRegion) : null;
   let complementaryResults: TavilyResult[] = [];
   if (complementaryQuery) {
-    try { complementaryResults = await tavilySearch(apiKey, complementaryQuery, { maxResults: 8 }); }
+    try { complementaryResults = await tavilySearch(apiKey, complementaryQuery, { maxResults: DISCOVERY_MAX_RESULTS }); }
     catch { complementaryResults = []; }
   }
   const discoveryEvidence = [...firstTwoEvidence, ...asDiscoveryEvidence(complementaryResults, "complementary")];
