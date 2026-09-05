@@ -28,6 +28,9 @@ test("marketplace page identifies its concrete seller and retains the marketplac
     domain: "gemini.ua",
     officialUrl: "https://store.gemini.ua/catalog",
     sourceType: "marketplace",
+    aliases: ["Gemini"],
+    identitySource: "seller_label",
+    confidence: "high",
   });
 });
 
@@ -36,7 +39,7 @@ test("Rozetka listing identity is the named seller and never the marketplace dom
     "Кава в зернах | Rozetka",
     "Продавець: Company A | Кава для бізнесу оптом.",
     "https://rozetka.com.ua/ua/company-a-coffee/p3",
-  ), { name: "Company A", domain: null, officialUrl: null, sourceType: "marketplace" });
+  ), { name: "Company A", domain: null, officialUrl: null, sourceType: "marketplace", aliases: ["Company A"], identitySource: "seller_label", confidence: "high" });
 });
 
 test("marketplace, directory, and article pages without a named seller are not suppliers", () => {
@@ -55,5 +58,20 @@ test("official KavaUA identity supersedes a TESORO product-page title", () => {
     domain: "kavaua.com.ua",
     officialUrl: "https://kavaua.com.ua/product/tesoro",
     sourceType: "official",
+    aliases: ["KavaUA", "kavaua"],
+    identitySource: "official_domain",
+    confidence: "medium",
   });
+});
+
+test("generic roles and product/category titles cannot become supplier identities", () => {
+  for (const [title, domain] of [["виробник", "manufacturer"], ["постачальник", "supplier"], ["дистриб'ютор", "distributor"], ["seller", "seller"], ["supplier", "supplier"], ["manufacturer", "manufacturer"], ["Купити каву оптом", "catalog"], ["Кава — каталог", "category"]]) {
+    assert.equal(identifySupplier(title, "Кава в зернах оптом.", `https://${domain}.example/coffee`), null);
+  }
+});
+
+test("generic product page resolves through strong company metadata", () => {
+  const identity = identifySupplier("Купити каву оптом", "Компанія: Royal Life. Кава в зернах для HoReCa.", "https://royal-life.ua/wholesale");
+  assert.equal(identity?.name, "Royal Life");
+  assert.equal(identity?.identitySource, "company_label");
 });

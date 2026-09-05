@@ -177,6 +177,7 @@ function diagnosticEvaluation(
     url: result.url,
     hostname: hostname(result.url),
     supplierIdentityMatched: identityMatched,
+    evidenceIdentityMatched: identityMatched,
     identityMatchedBy,
     marketplaceSellerMatched,
     genericRejected,
@@ -192,6 +193,7 @@ function diagnosticEvaluation(
           ? "marketplace_explicit_delivery" : context.sourceType
       : null,
     rejectionReason,
+    evidenceRejectedReason: rejectionReason,
     productCandidate: product?.value ?? null,
     moqCandidate: moq?.value ?? null,
     priceCandidate: price?.value ?? null,
