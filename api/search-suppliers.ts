@@ -11,7 +11,11 @@ import {
   deriveSupplierSearchCriteria,
   type SupplierSearchCriteria,
 } from "../shared/supplier-search-criteria";
-import { buildAdditionalMarketAwareDiscoveryQuery, buildMarketAwareDiscoveryQuery } from "./market-discovery";
+import {
+  buildAdditionalMarketAwareDiscoveryQuery,
+  buildComplementaryMarketAwareDiscoveryQuery,
+  buildMarketAwareDiscoveryQuery,
+} from "./market-discovery";
 import { identifySupplier, supplierIdentityKey, type SupplierIdentity } from "./supplier-identity";
 
 declare const process: {
@@ -74,7 +78,7 @@ function diagnosticRawResult(result: TavilyResult, index?: number) {
   };
 }
 
-function diagnosticsLog(prefix: "PRIMARY" | "ADDITIONAL" | "OFFICIAL" | "EXTERNAL" | "FINAL" | "SUMMARY", payload: unknown): void {
+function diagnosticsLog(prefix: "PRIMARY" | "ADDITIONAL" | "COMPLEMENTARY" | "OFFICIAL" | "EXTERNAL" | "FINAL" | "SUMMARY", payload: unknown): void {
   console.log(`[SUPPLIER_DIAGNOSTICS][${prefix}]`, JSON.stringify(payload));
 }
 
@@ -202,7 +206,7 @@ export default async function handler(
 
   let primaryResults: TavilyResult[];
   try {
-    primaryResults = await tavilySearch(apiKey, searchQuery, { maxResults: 5 });
+    primaryResults = await tavilySearch(apiKey, searchQuery, { maxResults: 10 });
   } catch {
     response.status(502).json({
       error: "Supplier search service is currently unavailable.",
@@ -280,25 +284,44 @@ export default async function handler(
     return { candidateGroups, evaluations, productRelevantCandidates, qualifiedCount, productRelevantCount };
   }
 
+  const discoveryExpansionTarget = 8;
   const primaryEvaluation = evaluateDiscovery(primaryResults);
-  const additionalTriggered = primaryEvaluation.candidateGroups.size < 5;
+  const additionalTriggered = primaryEvaluation.candidateGroups.size < discoveryExpansionTarget;
   const additionalTriggerReason = additionalTriggered
-    ? `viable unique suppliers ${primaryEvaluation.candidateGroups.size} is below 5`
-    : null;
+    ? `viable unique suppliers ${primaryEvaluation.candidateGroups.size} is below target ${discoveryExpansionTarget}`
+    : `viable unique suppliers ${primaryEvaluation.candidateGroups.size} reached target ${discoveryExpansionTarget}`;
   const additionalQuery = additionalTriggered
     ? buildAdditionalMarketAwareDiscoveryQuery(criteria.product ?? normalizedQuery, normalizedDeliveryRegion)
     : null;
   let additionalResults: TavilyResult[] = [];
   if (additionalQuery) {
     try {
-      additionalResults = await tavilySearch(apiKey, additionalQuery, { maxResults: 5 });
+      additionalResults = await tavilySearch(apiKey, additionalQuery, { maxResults: 10 });
     } catch {
       // The bounded supplemental attempt is best-effort; primary discovery remains usable.
       additionalResults = [];
     }
   }
-  const tavilyResults = [...primaryResults, ...additionalResults];
-  // Re-run the complete qualification/relevance/identity pipeline over the combined evidence.
+  const primaryAndAdditionalResults = [...primaryResults, ...additionalResults];
+  const primaryAndAdditionalEvaluation = evaluateDiscovery(primaryAndAdditionalResults);
+  const complementaryTriggered = primaryAndAdditionalEvaluation.candidateGroups.size < discoveryExpansionTarget;
+  const complementaryTriggerReason = complementaryTriggered
+    ? `viable unique suppliers ${primaryAndAdditionalEvaluation.candidateGroups.size} is below target ${discoveryExpansionTarget}`
+    : `viable unique suppliers ${primaryAndAdditionalEvaluation.candidateGroups.size} reached target ${discoveryExpansionTarget}`;
+  const complementaryQuery = complementaryTriggered
+    ? buildComplementaryMarketAwareDiscoveryQuery(criteria.product ?? normalizedQuery, normalizedDeliveryRegion)
+    : null;
+  let complementaryResults: TavilyResult[] = [];
+  if (complementaryQuery) {
+    try {
+      complementaryResults = await tavilySearch(apiKey, complementaryQuery, { maxResults: 10 });
+    } catch {
+      // The final bounded discovery attempt is best-effort; earlier discovery remains usable.
+      complementaryResults = [];
+    }
+  }
+  const tavilyResults = [...primaryAndAdditionalResults, ...complementaryResults];
+  // Re-run the complete pipeline over all discovery evidence after each bounded expansion decision.
   const combinedEvaluation = evaluateDiscovery(tavilyResults);
   const candidates = [...combinedEvaluation.candidateGroups.values()];
 
@@ -313,17 +336,29 @@ export default async function handler(
       rawResults: primaryResults.map((result, index) => diagnosticRawResult(result, index)),
       evaluations: primaryEvaluation.evaluations,
       afterQualificationAndProductRelevance: primaryEvaluation.productRelevantCandidates,
-      afterHostnameDedupe: [...primaryEvaluation.candidateGroups.values()].map(candidate => ({ title: candidate.identity.name, url: candidate.identity.officialUrl, hostname: candidate.identity.domain, evidenceCount: candidate.evidenceSources.length })),
+      afterSupplierIdentityDedupe: [...primaryEvaluation.candidateGroups.values()].map(candidate => ({ title: candidate.identity.name, url: candidate.identity.officialUrl, domain: candidate.identity.domain, evidenceCount: candidate.evidenceSources.length })),
     });
     diagnosticsLog("ADDITIONAL", {
       requestId,
       exactQuery: additionalQuery,
       triggerReason: additionalTriggerReason,
+      triggered: additionalTriggered,
       rawResults: additionalResults.map((result, index) => diagnosticRawResult(result, index)),
+      combinedRawCount: primaryAndAdditionalResults.length,
+      evaluations: primaryAndAdditionalEvaluation.evaluations,
+      afterQualificationAndProductRelevance: primaryAndAdditionalEvaluation.productRelevantCandidates,
+      afterSupplierIdentityDedupe: [...primaryAndAdditionalEvaluation.candidateGroups.values()].map(candidate => ({ title: candidate.identity.name, url: candidate.identity.officialUrl, domain: candidate.identity.domain, evidenceCount: candidate.evidenceSources.length })),
+    });
+    diagnosticsLog("COMPLEMENTARY", {
+      requestId,
+      exactQuery: complementaryQuery,
+      triggered: complementaryTriggered,
+      triggerReason: complementaryTriggerReason,
+      rawResults: complementaryResults.map((result, index) => diagnosticRawResult(result, index)),
       combinedRawCount: tavilyResults.length,
       evaluations: combinedEvaluation.evaluations,
       afterQualificationAndProductRelevance: combinedEvaluation.productRelevantCandidates,
-      afterHostnameDedupe: candidates.map(candidate => ({ title: candidate.identity.name, url: candidate.identity.officialUrl, hostname: candidate.identity.domain, evidenceCount: candidate.evidenceSources.length })),
+      afterSupplierIdentityDedupe: candidates.map(candidate => ({ title: candidate.identity.name, url: candidate.identity.officialUrl, domain: candidate.identity.domain, evidenceCount: candidate.evidenceSources.length })),
     });
   }
 
@@ -418,17 +453,23 @@ export default async function handler(
       primaryQuery: searchQuery,
       additionalQuery,
       additionalTriggerReason,
+      additionalTriggered,
+      complementaryQuery,
+      complementaryTriggerReason,
+      complementaryTriggered,
       primaryRawCount: primaryResults.length,
       additionalRawCount: additionalResults.length,
+      complementaryRawCount: complementaryResults.length,
       combinedRawCount: tavilyResults.length,
       qualifiedCount: combinedEvaluation.qualifiedCount,
       productRelevantCount: combinedEvaluation.productRelevantCount,
       dedupedCount: candidates.length,
+      discoveryCallCount: 1 + Number(additionalTriggered) + Number(complementaryTriggered),
       officialCalls,
       externalCalls,
       confirmedDeliveryCount: enriched.filter(item => item.delivery.status === "confirmed").length,
       notConfirmedDeliveryCount: enriched.filter(item => item.delivery.status === "not_confirmed").length,
-      notAvailableCount: enriched.filter(item => item.delivery.status === "not_available").length,
+      notAvailableDeliveryCount: enriched.filter(item => item.delivery.status === "not_available").length,
       returnedCount: results.length,
     });
   }

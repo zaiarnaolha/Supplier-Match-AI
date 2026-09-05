@@ -3,7 +3,7 @@ import test from "node:test";
 import handler from "../api/search-suppliers.ts";
 import { buildSupplierSearchRequest } from "../shared/supplier-search-criteria.ts";
 
-type Payload = { query?: string; include_domains?: string[] };
+type Payload = { query?: string; include_domains?: string[]; max_results?: number };
 
 function tavily(results: unknown[]): Response {
   return new Response(JSON.stringify({ results }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -56,9 +56,10 @@ test("qualification happens before hostname dedupe and enrichment retains one ca
     assert.equal(response.responseBody.results.length, 1);
     assert.equal(response.responseBody.results[0].url, "https://exact-coffee.example/catalog/coffee");
     assert.deepEqual((response.responseBody.results[0].delivery as { status: string }).status, "confirmed");
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
     assert.match(calls[1].query ?? "", /different commercial intent/);
-    assert.deepEqual(calls[2].include_domains, ["exact-coffee.example"]);
+    assert.match(calls[2].query ?? "", /complementary commercial intent/);
+    assert.deepEqual(calls[3].include_domains, ["exact-coffee.example"]);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
@@ -79,7 +80,7 @@ test("official and external verification failures do not fail the whole supplier
     const response = await invoke();
     assert.equal(response.statusCode, 200);
     assert.equal(response.responseBody.results.length, 0, "unconfirmed delivery must not reach the API response");
-    assert.equal(calls, 4);
+    assert.equal(calls, 5);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
@@ -104,7 +105,7 @@ test("a qualified supplier irrelevant to the requested product is rejected", asy
     );
     assert.equal(statusCode, 200);
     assert.deepEqual((body as { results: unknown[] }).results, []);
-    assert.equal(calls, 2);
+    assert.equal(calls, 3);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
@@ -133,11 +134,12 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
   };
   try {
     const response = await invoke();
-    assert.equal(calls, 3, "diagnostics must not add calls beyond the one bounded additional discovery");
+    assert.equal(calls, 4, "diagnostics must not add calls beyond three bounded discovery passes");
     assert.equal("diagnostics" in response.responseBody, false);
     assert.equal(JSON.stringify(response.responseBody).includes("SUPPLIER_DIAGNOSTICS"), false);
     assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][PRIMARY]")));
     assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][ADDITIONAL]")));
+    assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][COMPLEMENTARY]")));
     assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][OFFICIAL]")));
     assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][FINAL]")));
     assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][SUMMARY]")));
@@ -147,8 +149,11 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
     const summaryLine = logs.find(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][SUMMARY]")) ?? "";
     assert.match(summaryLine, /"primaryRawCount":1/);
     assert.match(summaryLine, /"additionalRawCount":1/);
-    assert.match(summaryLine, /"combinedRawCount":2/);
-    assert.match(summaryLine, /"additionalTriggerReason":"viable unique suppliers 1 is below 5"/);
+    assert.match(summaryLine, /"complementaryRawCount":1/);
+    assert.match(summaryLine, /"combinedRawCount":3/);
+    assert.match(summaryLine, /"additionalTriggerReason":"viable unique suppliers 1 is below target 8"/);
+    assert.match(summaryLine, /"complementaryTriggerReason":"viable unique suppliers 1 is below target 8"/);
+    assert.match(summaryLine, /"discoveryCallCount":3/);
     assert.match(summaryLine, /"officialCalls":1/);
     assert.match(summaryLine, /"externalCalls":0/);
     assert.match(summaryLine, /"returnedCount":1/);
@@ -189,16 +194,16 @@ test("control criteria reach backend and target both enrichment queries without 
   try {
     const response = await invoke(buildSupplierSearchRequest(query));
     assert.equal(response.statusCode, 200);
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5);
     assert.match(calls[0].query ?? "", /Use Ukrainian market terminology: оптом гуртом постачальник/);
     assert.match(calls[0].query ?? "", /^Кава в зернах /);
     assert.match(calls[0].query ?? "", /deliver to Україна; supplier location may be any country/iu);
     assert.doesNotMatch(calls[0].query ?? "", /20 кг/iu);
-    assert.match(calls[2].query ?? "", /buyer maximum MOQ до 20 кг/);
-    assert.match(calls[2].query ?? "", /delivery shipping Україна/);
-    assert.match(calls[3].query ?? "", /до 20 кг Україна shipping delivery/);
-    assert.equal(calls[2].query, "Кава в зернах wholesale B2B catalog MOQ minimum order price buyer maximum MOQ до 20 кг delivery shipping Україна company legal address");
-    assert.equal(calls[3].query, "\"Exact Coffee\" \"exact-coffee.example\" Кава в зернах buyer maximum MOQ до 20 кг Україна shipping delivery wholesale distributor");
+    assert.match(calls[3].query ?? "", /buyer maximum MOQ до 20 кг/);
+    assert.match(calls[3].query ?? "", /delivery shipping Україна/);
+    assert.match(calls[4].query ?? "", /до 20 кг Україна shipping delivery/);
+    assert.equal(calls[3].query, "Кава в зернах wholesale B2B catalog MOQ minimum order price buyer maximum MOQ до 20 кг delivery shipping Україна company legal address");
+    assert.equal(calls[4].query, "\"Exact Coffee\" \"exact-coffee.example\" Кава в зернах buyer maximum MOQ до 20 кг Україна shipping delivery wholesale distributor");
     assert.equal(response.responseBody.results.length, 1);
     assert.equal(response.responseBody.results[0].moq, null, "requested MOQ must not become supplier MOQ");
     assert.equal(response.responseBody.results[0].supplierLocation, null, "delivery region must not become supplier location");
@@ -214,7 +219,7 @@ test("control criteria reach backend and target both enrichment queries without 
   }
 });
 
-test("fewer than five viable identities trigger exactly one additional discovery and combined identity dedupe", async () => {
+test("fewer than eight viable identities run all three bounded passes and dedupe identities across them", async () => {
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.TAVILY_API_KEY;
   const discoveryQueries: string[] = [];
@@ -243,8 +248,9 @@ test("fewer than five viable identities trigger exactly one additional discovery
   try {
     const response = await invoke();
     assert.equal(response.statusCode, 200);
-    assert.equal(discoveryQueries.length, 2, "only one additional discovery is allowed");
+    assert.equal(discoveryQueries.length, 3, "discovery must stop after the complementary pass");
     assert.match(discoveryQueries[1], /different commercial intent/);
+    assert.match(discoveryQueries[2], /complementary commercial intent/);
     assert.equal(response.responseBody.results.length, 2);
     assert.equal(response.responseBody.results.filter(result => result.supplierDomain === "gemini.ua").length, 1);
   } finally {
@@ -253,7 +259,7 @@ test("fewer than five viable identities trigger exactly one additional discovery
   }
 });
 
-test("five viable unique suppliers do not trigger additional discovery", async () => {
+test("eight viable unique suppliers from primary skip both expansion passes", async () => {
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.TAVILY_API_KEY;
   let discoveryCalls = 0;
@@ -262,7 +268,7 @@ test("five viable unique suppliers do not trigger additional discovery", async (
     const payload = JSON.parse(String(init?.body)) as Payload;
     if (!payload.include_domains && !payload.query?.startsWith('"')) {
       discoveryCalls += 1;
-      return tavily(Array.from({ length: 5 }, (_, index) => ({
+      return tavily(Array.from({ length: 8 }, (_, index) => ({
         title: `Coffee Supplier ${index + 1}`,
         url: `https://supplier-${index + 1}.example/wholesale`,
         content: "Наша компанія — постачальник. Кава в зернах оптом для бізнесу.",
@@ -279,7 +285,44 @@ test("five viable unique suppliers do not trigger additional discovery", async (
     const response = await invoke();
     assert.equal(response.statusCode, 200);
     assert.equal(discoveryCalls, 1);
-    assert.equal(response.responseBody.results.length, 5);
+    assert.equal(response.responseBody.results.length, 8);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+  }
+});
+
+test("one additional pass runs when primary is below eight and reaching eight skips complementary", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  const discoveryPayloads: Payload[] = [];
+  process.env.TAVILY_API_KEY = "test-key";
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    if (!payload.include_domains && !payload.query?.startsWith('"')) {
+      discoveryPayloads.push(payload);
+      const offset = discoveryPayloads.length === 1 ? 0 : 4;
+      return tavily(Array.from({ length: 4 }, (_, index) => ({
+        title: `Coffee Supplier ${offset + index + 1}`,
+        url: `https://supplier-${offset + index + 1}.example/wholesale`,
+        content: "Наша компанія — постачальник. Кава в зернах оптом для бізнесу.",
+        score: 0.9,
+      })));
+    }
+    const domain = payload.include_domains?.[0] ?? "unknown.example";
+    return tavily([{
+      title: "Кава в зернах — доставка", url: `https://${domain}/delivery`,
+      content: "Кава в зернах. Доставка по Україні.", score: 0.8,
+    }]);
+  };
+  try {
+    const response = await invoke();
+    assert.equal(response.statusCode, 200);
+    assert.equal(discoveryPayloads.length, 2, "exactly one additional discovery call should run");
+    assert.equal(discoveryPayloads[0].max_results, 10);
+    assert.equal(discoveryPayloads[1].max_results, 10);
+    assert.match(discoveryPayloads[1].query ?? "", /different commercial intent/);
+    assert.equal(response.responseBody.results.length, 8);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
@@ -307,7 +350,7 @@ test("RoyalLife reaches enrichment and remains eligible with actual MOQ 30 кг 
   try {
     const response = await invoke(buildSupplierSearchRequest(query));
     assert.equal(response.statusCode, 200);
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
     assert.equal(response.responseBody.results.length, 1);
     assert.equal(response.responseBody.results[0].moq, "від 30 кг");
     assert.notEqual(response.responseBody.results[0].moq, "20 кг");
@@ -337,7 +380,7 @@ test("marketplace B2B seller remains eligible from supplier-specific evidence de
   try {
     const response = await invoke(buildSupplierSearchRequest(query));
     assert.equal(response.statusCode, 200);
-    assert.equal(calls, 2, "marketplace-only supplier performs primary plus one bounded additional discovery");
+    assert.equal(calls, 3, "marketplace-only supplier performs all three bounded discovery passes");
     assert.equal(response.responseBody.results.length, 1);
     assert.equal(response.responseBody.results[0].title, "Company A");
     assert.equal(response.responseBody.results[0].supplierDomain, null);

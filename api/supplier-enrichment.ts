@@ -1,5 +1,5 @@
 import { extractMoq, extractPrice, extractProduct, type ExtractedField } from "./supplier-extraction";
-import { canonicalSupplierDomain, identifySupplier, sourceTypeForUrl } from "./supplier-identity";
+import { canonicalSupplierDomain, identifySupplier, isConcreteSupplierName, sourceTypeForUrl } from "./supplier-identity";
 
 export type DeliveryStatus = "confirmed" | "not_confirmed" | "not_available";
 export type EvidenceSource = "official" | "external" | "marketplace";
@@ -72,10 +72,15 @@ function regionPattern(region: string): RegExp | null {
 }
 
 function supplierIdentityPresent(result: EnrichmentSearchResult, supplierName: string, supplierHostname: string): boolean {
+  if (!isConcreteSupplierName(supplierName)) return false;
   const text = normalizeIdentity(textOf(result));
   const name = normalizeIdentity(supplierName);
   const domain = normalizeIdentity(supplierHostname);
-  return (name.length >= 4 && text.includes(name)) || (domain.length >= 4 && (text.includes(domain) || hostname(result.url) === domain));
+  const domainMatched = domain.length >= 4
+    && (text.includes(domain) || canonicalSupplierDomain(hostname(result.url)) === canonicalSupplierDomain(domain));
+  if (domain) return domainMatched;
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  return name.length >= 4 && new RegExp(`(?:^|\\s)${escapedName}(?=$|\\s)`, "iu").test(text);
 }
 
 function marketplaceSellerIdentityPresent(result: EnrichmentSearchResult, supplierName: string): boolean {
@@ -159,7 +164,9 @@ function diagnosticEvaluation(
   const officialDomainMatched = canonicalSupplierDomain(hostname(result.url)) === canonicalSupplierDomain(context.supplierHostname);
   const marketplaceSellerMatched = context.sourceType === "marketplace"
     ? marketplaceSellerIdentityPresent(result, context.supplierName) : false;
-  const identityMatched = context.sourceType === "marketplace" ? marketplaceSellerMatched : identityMatchedBy !== "neither";
+  const identityMatched = context.sourceType === "marketplace"
+    ? marketplaceSellerMatched
+    : supplierIdentityPresent(result, context.supplierName, context.supplierHostname);
   const eligible = context.sourceType === "official"
     ? officialDomainMatched
     : identityMatched && !genericRejected && (context.sourceType !== "marketplace" || Boolean(product));
