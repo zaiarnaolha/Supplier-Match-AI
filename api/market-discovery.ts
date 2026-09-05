@@ -34,3 +34,17 @@ export function buildAdditionalMarketAwareDiscoveryQuery(product: string, delive
     "Return concrete manufacturers, distributors, wholesalers, or named sellers; discovery pages remain evidence sources only.",
   ].join(" ");
 }
+
+export function buildComplementaryMarketAwareDiscoveryQuery(product: string, deliveryRegion: string): string {
+  const market = MARKETS[deliveryRegion.trim().toLocaleLowerCase()];
+  const marketInstruction = market
+    ? `Use ${market.language} market terminology: ${market.commercialTerms}.`
+    : `Use the local commercial terminology used by buyers in ${deliveryRegion}.`;
+  return [
+    product,
+    marketInstruction,
+    `Find product-specific manufacturers, producers, distributors, HoReCa suppliers, wholesale catalogues, and B2B product pages that deliver to ${deliveryRegion}; supplier location may be any country.`,
+    "Use a complementary commercial intent from the earlier searches and identify concrete supplier companies or named B2B sellers.",
+    "Marketplaces, directories, catalogues, and articles are evidence sources only and must not themselves become suppliers.",
+  ].join(" ");
+}
