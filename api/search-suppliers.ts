@@ -11,6 +11,8 @@ import {
   deriveSupplierSearchCriteria,
   type SupplierSearchCriteria,
 } from "../shared/supplier-search-criteria";
+import { buildMarketAwareDiscoveryQuery } from "./market-discovery";
+import { identifySupplier, supplierIdentityKey, type SupplierIdentity } from "./supplier-identity";
 
 declare const process: {
   env: {
@@ -196,14 +198,7 @@ export default async function handler(
   const criteria = structuredCriteriaFromBody(normalizedQuery, deliveryRegion.trim(), requestCriteria);
   const normalizedDeliveryRegion = criteria.deliveryRegion;
   const requestedProduct = extractProduct(criteria.product ?? normalizedQuery, "", "");
-  const searchQuery = [
-    criteria.product ?? normalizedQuery,
-    "Find actual suppliers, manufacturers, distributors, or wholesalers that sell or distribute the requested product.",
-    "Prioritize official supplier or manufacturer websites, product catalog pages, and wholesale or B2B supplier pages.",
-    "Exclude blog posts, news articles, guides, educational content, how to choose a supplier articles, and general informational pages.",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const searchQuery = buildMarketAwareDiscoveryQuery(criteria.product ?? normalizedQuery, normalizedDeliveryRegion);
 
   let tavilyResults: TavilyResult[];
   try {
@@ -215,8 +210,12 @@ export default async function handler(
     return;
   }
 
-  const seenHostnames = new Set<string>();
-  const candidates: Array<TavilyResult & { fields: ReturnType<typeof extractSupplierFields> }> = [];
+  const candidateGroups = new Map<string, {
+    identity: SupplierIdentity;
+    primary: TavilyResult;
+    fields: ReturnType<typeof extractSupplierFields>;
+    evidenceSources: TavilyResult[];
+  }>();
   const diagnosticsEnabled = process.env.SUPPLIER_SEARCH_DIAGNOSTICS === "true";
   const requestId = diagnosticsEnabled
     ? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -230,17 +229,22 @@ export default async function handler(
     reason: string | null;
     extractedProduct: string | null;
     productRelevant: boolean;
+    supplierName?: string | null;
+    supplierDomain?: string | null;
+    sourceType?: string | null;
+    b2bEvidence?: string[];
   }> = [];
   let qualifiedResultCount = 0;
   let productRelevantCount = 0;
   const productRelevantCandidates: Array<{ title: string; url: string; hostname: string }> = [];
 
   for (const [resultIndex, { title, url, content, score }] of tavilyResults.entries()) {
+    const identity = identifySupplier(title, content, url);
     const qualification = qualifySupplierCandidate(title, content, url);
 
     const fields = extractSupplierFields(title, content, url);
     const productRelevant = Boolean(
-      qualification.qualified
+      identity && qualification.qualified
       && fields.product
       && requestedProduct
       && fields.product.value === requestedProduct.value,
@@ -255,22 +259,31 @@ export default async function handler(
         reason: qualification.qualified ? null : qualification.reason,
         extractedProduct: fields.product?.value ?? null,
         productRelevant,
+        supplierName: identity?.name ?? null,
+        supplierDomain: identity?.domain ?? null,
+        sourceType: identity?.sourceType ?? null,
+        b2bEvidence: qualification.qualified ? qualification.evidence : [],
       });
     }
 
-    if (!qualification.qualified) continue;
+    if (!identity || !qualification.qualified) continue;
     qualifiedResultCount += 1;
     // Supplier identity alone is insufficient: the primary evidence must also name the requested product.
     if (!fields.product || !requestedProduct || fields.product.value !== requestedProduct.value) continue;
     productRelevantCount += 1;
 
-    const hostname = hostnameKey(url);
-    productRelevantCandidates.push({ title, url, hostname });
-    if (seenHostnames.has(hostname)) continue;
-
-    seenHostnames.add(hostname);
-    candidates.push({ title, url, content, score, fields });
+    const hostname = identity.domain ?? hostnameKey(url);
+    productRelevantCandidates.push({ title: identity.name, url, hostname });
+    const key = supplierIdentityKey(identity);
+    const current = candidateGroups.get(key);
+    if (current) {
+      current.evidenceSources.push({ title, url, content, score });
+      if (score > current.primary.score) current.primary = { title, url, content, score };
+    } else {
+      candidateGroups.set(key, { identity, primary: { title, url, content, score }, fields, evidenceSources: [{ title, url, content, score }] });
+    }
   }
+  const candidates = [...candidateGroups.values()];
 
   if (diagnosticsEnabled) {
     diagnosticsLog("PRIMARY", {
@@ -282,7 +295,7 @@ export default async function handler(
       rawResults: tavilyResults.map((result, index) => diagnosticRawResult(result, index)),
       evaluations: diagnosticResults,
       afterQualificationAndProductRelevance: productRelevantCandidates,
-      afterHostnameDedupe: candidates.map(candidate => ({ title: candidate.title, url: candidate.url, hostname: hostnameKey(candidate.url) })),
+      afterHostnameDedupe: candidates.map(candidate => ({ title: candidate.identity.name, url: candidate.identity.officialUrl, hostname: candidate.identity.domain, evidenceCount: candidate.evidenceSources.length })),
     });
   }
 
@@ -292,15 +305,15 @@ export default async function handler(
   const enriched = await Promise.all(candidates.map(async candidate => {
     const primary = {
       product: candidate.fields.product?.value ?? null,
-      moq: candidate.fields.moq?.value ?? null,
-      price: candidate.fields.price?.value ?? null,
+      moq: null,
+      price: null,
       // Medium country extraction may combine a city mention with a TLD; that is not reliable location evidence.
       supplierLocation: candidate.fields.country?.confidence === "high" ? candidate.fields.country.value : null,
       delivery: { region: normalizedDeliveryRegion, status: "not_confirmed" as const, evidence: null, sourceUrl: null, sourceType: null },
     };
     const diagnosticTrace = {
-      supplierTitle: candidate.title,
-      supplierUrl: candidate.url,
+      supplierTitle: candidate.identity.name,
+      supplierUrl: candidate.identity.officialUrl ?? candidate.primary.url,
       primary,
       official: null as unknown,
       external: null as unknown,
@@ -308,7 +321,7 @@ export default async function handler(
     };
     if (diagnosticsEnabled) finalDiagnostics.push(diagnosticTrace);
     const verification = await enrichSupplier(
-      { title: candidate.title, url: candidate.url },
+      { title: candidate.identity.name, url: candidate.identity.officialUrl ?? candidate.primary.url, domain: candidate.identity.domain, evidenceSources: candidate.evidenceSources },
       requestedProduct.value,
       normalizedDeliveryRegion,
       (enrichmentQuery, options) => tavilySearch(apiKey, enrichmentQuery, options),
@@ -335,10 +348,12 @@ export default async function handler(
     const fields = mergeEnrichment(primary, verification);
     if (diagnosticsEnabled) diagnosticTrace.final = fields;
     return {
-      title: candidate.title,
-      url: candidate.url,
-      content: candidate.content,
-      score: candidate.score,
+      title: candidate.identity.name,
+      url: candidate.identity.officialUrl ?? candidate.primary.url,
+      content: candidate.primary.content,
+      score: candidate.primary.score,
+      supplierDomain: candidate.identity.domain,
+      evidenceSources: candidate.evidenceSources.map(source => ({ url: source.url, sourceType: identifySupplier(source.title, source.content, source.url)?.sourceType ?? "external" })),
       product: fields.product,
       country: fields.supplierLocation,
       supplierLocation: fields.supplierLocation,
@@ -361,6 +376,11 @@ export default async function handler(
         externalValues: trace?.external ?? null,
         finalMergedValues: trace?.final ?? candidate,
         excludedBecauseDeliveryNotConfirmed: candidate.delivery.status !== "confirmed",
+        finalExclusionReason: candidate.product !== requestedProduct.value
+          ? "requested product not confirmed"
+          : candidate.delivery.status !== "confirmed"
+            ? `delivery to ${normalizedDeliveryRegion} ${candidate.delivery.status.replace("_", " ")}`
+            : null,
         finalRankingPosition: rankingIndex < 0 ? null : rankingIndex + 1,
         preFilterPosition: candidateIndex + 1,
       });

@@ -148,3 +148,20 @@ test("only confirmed delivery passes the final filter, regardless of supplier MO
   assert.equal(ranked[0].moq, "50 кг", "supplier MOQ above the user's 20 кг maximum is not a hard filter");
   assert.equal(ranked[0].price, "900 ₴/кг", "supplier price is not a hard filter");
 });
+
+test("supplier-specific marketplace evidence can provide product, delivery, MOQ, and price", async () => {
+  const marketplace = result(
+    "Продавець: Gemini | Кава в зернах гуртом. MOQ: 50 кг. Оптова ціна 900 грн/кг. Доставка в Україну.",
+    { title: "Gemini marketplace listing", url: "https://prom.ua/p456.html" },
+  );
+  let calls = 0;
+  const enriched = await enrichSupplier(
+    { title: "Gemini", url: "https://gemini.ua", domain: "gemini.ua", evidenceSources: [marketplace] },
+    "Кава в зернах", "Україна", async () => { calls += 1; return []; }, undefined, "до 20 кг",
+  );
+  assert.equal(calls, 1, "confirmed discovered evidence avoids an unnecessary external lookup");
+  assert.equal(enriched.delivery.status, "confirmed");
+  assert.equal(enriched.moq, "50 кг");
+  assert.equal(enriched.price, "900 грн/кг");
+  assert.equal(enriched.supplierLocation, null);
+});
