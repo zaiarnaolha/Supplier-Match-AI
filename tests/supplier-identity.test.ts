@@ -10,6 +10,13 @@ test("supplier subdomains share one canonical identity", () => {
   assert.equal(supplierIdentityKey(site), supplierIdentityKey(store));
 });
 
+test("Ukrainian regional public suffixes retain the registrable supplier label", () => {
+  assert.equal(canonicalSupplierDomain("https://horecacoffee.cn.ua/catalog"), "horecacoffee.cn.ua");
+  assert.equal(canonicalSupplierDomain("https://palitra.ck.ua/coffee"), "palitra.ck.ua");
+  assert.notEqual(canonicalSupplierDomain("https://horecacoffee.cn.ua"), "cn.ua");
+  assert.notEqual(canonicalSupplierDomain("https://palitra.ck.ua"), "ck.ua");
+});
+
 test("marketplace page identifies its concrete seller and retains the marketplace as source", () => {
   const identity = identifySupplier(
     "Кава в зернах | Prom.ua",
@@ -22,6 +29,14 @@ test("marketplace page identifies its concrete seller and retains the marketplac
     officialUrl: "https://store.gemini.ua/catalog",
     sourceType: "marketplace",
   });
+});
+
+test("Rozetka listing identity is the named seller and never the marketplace domain", () => {
+  assert.deepEqual(identifySupplier(
+    "Кава в зернах | Rozetka",
+    "Продавець: Company A | Кава для бізнесу оптом.",
+    "https://rozetka.com.ua/ua/company-a-coffee/p3",
+  ), { name: "Company A", domain: null, officialUrl: null, sourceType: "marketplace" });
 });
 
 test("marketplace, directory, and article pages without a named seller are not suppliers", () => {

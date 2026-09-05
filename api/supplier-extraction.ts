@@ -21,11 +21,12 @@ const COUNTRIES: readonly CountryDefinition[] = [{
   domains: [".ua", ".com.ua"],
 }];
 
-const MOQ_MARKER = /(?:minimum\s+order(?:\s+quantity)?|moq|мінімальн(?:е\s+замовлення|а\s+партія)|замовлення\s+від|опт\s+від|гуртом\s+від|wholesale\s+from)/giu;
+const MOQ_MARKER = /(?:minimum\s+order(?:\s+quantity)?|moq|мінімальн(?:е\s+замовлення|а\s+партія|ий\s+обсяг|ого\s+обсягу)|замовлення\s+від|опт\s+від|гуртом\s+від|wholesale\s+from)/giu;
 const QUANTITY = /(?:від\s+|from\s+)?\d+(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[.,]\d+)?)?\s*(?:кг|kg|кілограм(?:и|ів)?|шт\.?|pcs?|pieces?|тонн?(?:и)?|т|g|грам(?:и|ів)?|г)(?=$|[^\p{L}\p{N}])/iu;
 const PRICE_MARKER = /(?:оптова\s+ціна|wholesale\s+price|ціна|price|вартість)/giu;
 const MONEY = /(?:від\s+|from\s+)?(?:(?:[$€]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?)?)|(?:\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?)?\s*(?:грн|₴|uah|usd|eur)))(?:\s*\/\s*(?:кг|kg|шт\.?|pcs?|л|l))?/giu;
 const NON_PRODUCT_PAYMENT = /(?:безкоштовн\p{L}*\s+достав|доставк\p{L}*|shipping|free\s+shipping|delivery|купон|coupon|membership|підписк|subscription|комісі|commission|депозит|deposit)/iu;
+const UNAMBIGUOUS_WHOLESALE_COFFEE = /(?:кава[^.!?]{0,55}(?:оптом|гуртом|оптов\p{L}*|постачальник|виробник|для\s+бізнес(?:у|ів)|horeca)|(?:оптом|гуртом|оптов\p{L}*|постачальник|виробник|horeca)[^.!?]{0,55}кава)/iu;
 
 function normalized(value: string): string { return value.toLocaleLowerCase().replace(/[’`]/g, "'").replace(/\s+/g, " ").trim(); }
 function literalPresent(text: string, phrase: string): boolean {
@@ -43,6 +44,11 @@ export function extractProduct(title: string, content: string, url: string): Ext
   }
   for (const { category, alias } of candidates) {
     if (literalPresent(contentText, alias)) return { value: category.canonical, evidence: `content: ${alias}`, confidence: "high" };
+  }
+  const combinedText = normalized(`${title}. ${content}`);
+  const wholesaleCoffee = combinedText.match(UNAMBIGUOUS_WHOLESALE_COFFEE)?.[0];
+  if (wholesaleCoffee) {
+    return { value: "Кава в зернах", evidence: wholesaleCoffee, confidence: "medium" };
   }
   void url; // A URL is deliberately never sufficient evidence by itself.
   return null;
@@ -76,7 +82,7 @@ export function extractMoq(title: string, content: string): ExtractedField {
   const findings: Array<{ value: string; evidence: string }> = [];
   for (const marker of text.matchAll(MOQ_MARKER)) {
     const start = marker.index ?? 0;
-    const nearby = text.slice(start, start + marker[0].length + 55);
+    const nearby = text.slice(start, start + marker[0].length + 110);
     const quantity = nearby.match(QUANTITY)?.[0];
     if (quantity) {
       let value = canonicalQuantity(quantity);

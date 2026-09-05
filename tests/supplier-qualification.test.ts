@@ -106,3 +106,19 @@ test("still rejects a retail-only official product page", () => {
     "https://retail.example/coffee",
   ).qualified, false);
 });
+
+test("qualifies a concrete marketplace seller with product-specific B2B evidence", () => {
+  assert.equal(qualifySupplierCandidate(
+    "Свіжообсмажена кава в зернах Premium | Продавець: Company A",
+    "Кава для бізнесу, опт від 1 кг. Гуртова ціна 753 ₴/кг.",
+    "https://rozetka.com.ua/ua/company-a-coffee/p3",
+  ).qualified, true);
+});
+
+test("generic marketplace search or category evidence remains rejected", () => {
+  assert.equal(qualifySupplierCandidate(
+    "Кава оптом — каталог продавців",
+    "100 пропозицій від різних продавців. Порівняти ціни.",
+    "https://prom.ua/ua/coffee.html",
+  ).qualified, false);
+});

@@ -285,3 +285,70 @@ test("five viable unique suppliers do not trigger additional discovery", async (
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
   }
 });
+
+test("RoyalLife reaches enrichment and remains eligible with actual MOQ 30 кг above requested 20 кг", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  const query = "Шукаю постачальника кави в зернах в Україні для невеликої кав'ярні, MOQ до 20 кг";
+  let calls = 0;
+  process.env.TAVILY_API_KEY = "test-key";
+  globalThis.fetch = async (_input, init) => {
+    calls += 1;
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    if (calls === 1) return tavily([{
+      title: "Кава оптом від українського виробника Royal Life",
+      url: "https://royal-life.ua/kava-optom",
+      content: "Цікавить кава, купити оптом яку пропонує постачальник Роял Лайф? Мінімальний обсяг для отримання оптових умов у Royal Life починається від 30 кг. Стабільні поставки для бізнесу. Компанія забезпечує доставку по Україні через Нову Пошту.",
+      score: 0.95,
+    }]);
+    if (!payload.include_domains) return tavily([]);
+    return tavily([]);
+  };
+  try {
+    const response = await invoke(buildSupplierSearchRequest(query));
+    assert.equal(response.statusCode, 200);
+    assert.equal(calls, 3);
+    assert.equal(response.responseBody.results.length, 1);
+    assert.equal(response.responseBody.results[0].moq, "від 30 кг");
+    assert.notEqual(response.responseBody.results[0].moq, "20 кг");
+    assert.equal((response.responseBody.results[0].delivery as { status: string }).status, "confirmed");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+  }
+});
+
+test("marketplace B2B seller remains eligible from supplier-specific evidence despite preference mismatch", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  const query = "Шукаю постачальника кави в зернах в Україні, MOQ до 20 кг";
+  let calls = 0;
+  process.env.TAVILY_API_KEY = "test-key";
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) return tavily([{
+      title: "Кава в зернах Premium | Продавець: Company A",
+      url: "https://rozetka.com.ua/ua/company-a-coffee/p3",
+      content: "Продавець: Company A | Кава в зернах для бізнесу оптом. MOQ 50 кг. Ціна 1 100,00 грн. Доступна з доставкою Розетка по всій території України.",
+      score: 0.9,
+    }]);
+    return tavily([]);
+  };
+  try {
+    const response = await invoke(buildSupplierSearchRequest(query));
+    assert.equal(response.statusCode, 200);
+    assert.equal(calls, 2, "marketplace-only supplier performs primary plus one bounded additional discovery");
+    assert.equal(response.responseBody.results.length, 1);
+    assert.equal(response.responseBody.results[0].title, "Company A");
+    assert.equal(response.responseBody.results[0].supplierDomain, null);
+    assert.equal(response.responseBody.results[0].moq, "50 кг");
+    assert.equal(response.responseBody.results[0].price, "1 100,00 грн");
+    assert.equal((response.responseBody.results[0].delivery as { sourceType: string }).sourceType, "marketplace");
+    assert.deepEqual(response.responseBody.results[0].evidenceSources, [{
+      url: "https://rozetka.com.ua/ua/company-a-coffee/p3", sourceType: "marketplace",
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+  }
+});

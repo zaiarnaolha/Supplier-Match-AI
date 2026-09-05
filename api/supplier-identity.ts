@@ -7,10 +7,10 @@ export interface SupplierIdentity {
   sourceType: DiscoverySourceType;
 }
 
-const MARKETPLACES = ["prom.ua", "agrotorg.net", "agrotorg.com", "alibaba.com", "amazon.com", "etsy.com"];
+const MARKETPLACES = ["prom.ua", "rozetka.com.ua", "agrotorg.net", "agrotorg.com", "alibaba.com", "amazon.com", "etsy.com"];
 const DIRECTORY_HOSTS = ["all.biz", "europages.com", "kompass.com"];
 const PLATFORM_NAMES = /^(?:prom(?:\.ua)?|agrotorg|alibaba|amazon|etsy|all\.biz|europages|kompass)$/iu;
-const SELLER_LABEL = /(?:продавець|постачальник|компанія|виробник|seller|supplier|sold\s+by|company|manufacturer)\s*[:—-]\s*([\p{L}\p{N}][\p{L}\p{N}&'’"“” ._-]{1,70})/iu;
+const SELLER_LABEL = /(?:продавець|постачальник|компанія|виробник|seller|supplier|sold\s+by|company|manufacturer)\s*[:—-]\s*([\p{L}\p{N}][\p{L}\p{N}&'’"“” _-]{1,70})/iu;
 const OFFICIAL_SITE = /(?:офіційний\s+сайт|сайт\s+(?:компанії|продавця)|official\s+(?:web)?site|company\s+(?:web)?site)\s*[:—-]?\s*(https?:\/\/[^\s,;)]+|(?:www\.)?[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s,;)]*)?)/iu;
 const PRODUCT_TITLE = /(?:кава|coffee|чай|tea|купити|ціна|price|catalog|каталог|товар|product)/iu;
 
@@ -22,7 +22,9 @@ export function canonicalSupplierDomain(value: string): string {
   const hostname = value.includes("://") ? host(value) : value.toLocaleLowerCase().replace(/^www\./, "").split("/")[0];
   const labels = hostname.split(".").filter(Boolean);
   if (labels.length <= 2) return hostname;
-  const compoundSuffix = /^(?:com|net|org|co)\.[a-z]{2}$/iu.test(labels.slice(-2).join("."));
+  const ukrainianPublicSuffix = /^(?:(?:com|net|org|co|biz|in|pp)|(?:ck|cn|cv|dp|dn|if|kh|km|kr|ks|kv|lg|lt|lv|mk|od|pl|rv|sb|sm|te|uz|vn|zp|zt|crimea|kiev|kyiv|sebastopol))\.ua$/iu;
+  const compoundSuffix = /^(?:com|net|org|co)\.[a-z]{2}$/iu.test(labels.slice(-2).join("."))
+    || ukrainianPublicSuffix.test(labels.slice(-2).join("."));
   return labels.slice(compoundSuffix ? -3 : -2).join(".");
 }
 

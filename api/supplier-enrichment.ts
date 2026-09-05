@@ -1,8 +1,8 @@
 import { extractMoq, extractPrice, extractProduct, type ExtractedField } from "./supplier-extraction";
-import { canonicalSupplierDomain } from "./supplier-identity";
+import { canonicalSupplierDomain, identifySupplier, sourceTypeForUrl } from "./supplier-identity";
 
 export type DeliveryStatus = "confirmed" | "not_confirmed" | "not_available";
-export type EvidenceSource = "official" | "external";
+export type EvidenceSource = "official" | "external" | "marketplace";
 
 export interface DeliveryVerification {
   region: string;
@@ -10,6 +10,7 @@ export interface DeliveryVerification {
   evidence: string | null;
   sourceUrl: string | null;
   sourceType: EvidenceSource | null;
+  confirmationMethod?: "official" | "external" | "marketplace_explicit_delivery" | "marketplace_delivery_network" | null;
 }
 
 export interface EnrichmentResult {
@@ -45,6 +46,7 @@ const NEGATIVE_DELIVERY = /(?:do(?:es)?\s+not|don['’]?t|cannot|can['’]?t|not
 const LOCATION_LABEL = /(?:legal|registered|contact|business)\s+address|headquarters|юридична\s+адреса|адреса\s+(?:компанії|офісу)|головний\s+офіс/iu;
 const LOCATION_VALUE = /(?:[\p{L}.'’ -]+,\s*)?(?:ukraine|україна|poland|польща|germany|німеччина|romania|румунія|slovakia|словаччина|czechia|чехія)/iu;
 const CHROME_GARBAGE = /(?:карта\s+сайту|site\s*map|breadcrumbs?|меню|menu|контакти\s+м|©|privacy|політика)/iu;
+const MARKETPLACE_NETWORK = /(?:доставк\p{L}*\s+(?:rozetka|розетка)|(?:rozetka|розетка)\s+доставк\p{L}*|marketplace\s+delivery\s+network|доступн\p{L}*\s+(?:для\s+замовлення\s+)?(?:з|із)\s+доставк\p{L}*|nationwide\s+(?:marketplace\s+)?delivery)/iu;
 
 function textOf(result: EnrichmentSearchResult): string {
   return `${result.title}. ${result.content}`.replace(/\s+/g, " ").trim();
@@ -62,8 +64,8 @@ function regionPattern(region: string): RegExp | null {
   const normalized = region.trim();
   if (!normalized || /^(?:anywhere|будь-яка країна)$/iu.test(normalized)) return null;
   const aliases: Record<string, string[]> = {
-    ukraine: ["ukraine", "україна", "україні", "україну"],
-    україна: ["ukraine", "україна", "україні", "україну"],
+    ukraine: ["ukraine", "україна", "україні", "україну", "україни"],
+    україна: ["ukraine", "україна", "україні", "україну", "україни"],
   };
   const values = aliases[normalized.toLocaleLowerCase()] ?? [normalized];
   return new RegExp(`(?:^|[^\\p{L}\\p{N}])(?:${values.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?=$|[^\\p{L}\\p{N}])`, "iu");
@@ -74,6 +76,12 @@ function supplierIdentityPresent(result: EnrichmentSearchResult, supplierName: s
   const name = normalizeIdentity(supplierName);
   const domain = normalizeIdentity(supplierHostname);
   return (name.length >= 4 && text.includes(name)) || (domain.length >= 4 && (text.includes(domain) || hostname(result.url) === domain));
+}
+
+function marketplaceSellerIdentityPresent(result: EnrichmentSearchResult, supplierName: string): boolean {
+  const identity = identifySupplier(result.title, result.content, result.url);
+  return identity?.sourceType === "marketplace"
+    && normalizeIdentity(identity.name) === normalizeIdentity(supplierName);
 }
 
 function identityMatchKind(
@@ -96,6 +104,17 @@ function deliverySignal(result: EnrichmentSearchResult, region: string): { negat
   for (const sentence of text.split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
     if (!regionRegex.test(sentence) || !DELIVERY_WORD.test(sentence)) continue;
     return { negative: NEGATIVE_DELIVERY.test(sentence), evidence: sentence.slice(0, 280) };
+  }
+  return null;
+}
+
+function marketplaceDeliveryNetworkSignal(result: EnrichmentSearchResult, region: string): { negative: boolean; evidence: string } | null {
+  const regionRegex = regionPattern(region);
+  if (!regionRegex) return null;
+  for (const sentence of textOf(result).split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
+    if (regionRegex.test(sentence) && MARKETPLACE_NETWORK.test(sentence)) {
+      return { negative: NEGATIVE_DELIVERY.test(sentence), evidence: sentence.slice(0, 280) };
+    }
   }
   return null;
 }
@@ -133,16 +152,23 @@ function diagnosticEvaluation(
   const location = explicitLocation(result);
   const regionMatched = regionPattern(context.deliveryRegion)?.test(text) ?? false;
   const deliveryContextMatched = DELIVERY_WORD.test(text);
-  const delivery = deliverySignal(result, context.deliveryRegion);
+  const explicitDelivery = deliverySignal(result, context.deliveryRegion);
+  const marketplaceNetworkDelivery = context.sourceType === "marketplace"
+    ? marketplaceDeliveryNetworkSignal(result, context.deliveryRegion) : null;
+  const delivery = marketplaceNetworkDelivery ?? explicitDelivery;
   const officialDomainMatched = canonicalSupplierDomain(hostname(result.url)) === canonicalSupplierDomain(context.supplierHostname);
-  const identityMatched = identityMatchedBy !== "neither";
+  const marketplaceSellerMatched = context.sourceType === "marketplace"
+    ? marketplaceSellerIdentityPresent(result, context.supplierName) : false;
+  const identityMatched = context.sourceType === "marketplace" ? marketplaceSellerMatched : identityMatchedBy !== "neither";
   const eligible = context.sourceType === "official"
     ? officialDomainMatched
-    : identityMatched && !genericRejected;
+    : identityMatched && !genericRejected && (context.sourceType !== "marketplace" || Boolean(product));
   let rejectionReason: string | null = null;
   if (context.sourceType === "official" && !officialDomainMatched) rejectionReason = "result is outside canonical supplier hostname";
   else if (context.sourceType === "external" && genericRejected) rejectionReason = "generic/list/directory result";
   else if (context.sourceType === "external" && !identityMatched) rejectionReason = "supplier identity not matched";
+  else if (context.sourceType === "marketplace" && !marketplaceSellerMatched) rejectionReason = "marketplace seller identity not matched";
+  else if (context.sourceType === "marketplace" && !product) rejectionReason = "marketplace listing does not match requested product";
   else if (!regionMatched) rejectionReason = "deliveryRegion not matched";
   else if (!deliveryContextMatched) rejectionReason = "delivery context not matched";
 
@@ -152,6 +178,7 @@ function diagnosticEvaluation(
     hostname: hostname(result.url),
     supplierIdentityMatched: identityMatched,
     identityMatchedBy,
+    marketplaceSellerMatched,
     genericRejected,
     requestedProductMatched: Boolean(product),
     deliveryRegionMatched: regionMatched,
@@ -159,6 +186,11 @@ function diagnosticEvaluation(
     positiveDeliveryEvidence: Boolean(delivery && !delivery.negative),
     negativeDeliveryEvidence: Boolean(delivery?.negative),
     acceptedAsDeliveryEvidence: Boolean(eligible && delivery),
+    deliveryConfirmationMethod: eligible && delivery
+      ? context.sourceType === "marketplace" && marketplaceNetworkDelivery
+        ? "marketplace_delivery_network" : context.sourceType === "marketplace"
+          ? "marketplace_explicit_delivery" : context.sourceType
+      : null,
     rejectionReason,
     productCandidate: product?.value ?? null,
     moqCandidate: moq?.value ?? null,
@@ -174,12 +206,16 @@ export function extractVerifiedEnrichment(
 ): EnrichmentResult {
   const eligible = results.filter(result => context.sourceType === "official"
     ? canonicalSupplierDomain(hostname(result.url)) === canonicalSupplierDomain(context.supplierHostname)
-    : !GENERIC_EXTERNAL.test(textOf(result)) && supplierIdentityPresent(result, context.supplierName, context.supplierHostname));
+    : context.sourceType === "marketplace"
+      ? !GENERIC_EXTERNAL.test(textOf(result))
+        && marketplaceSellerIdentityPresent(result, context.supplierName)
+        && Boolean(extractProduct(result.title, result.content, result.url))
+      : !GENERIC_EXTERNAL.test(textOf(result)) && supplierIdentityPresent(result, context.supplierName, context.supplierHostname));
   const productFields: SourcedField[] = [];
   const moqFields: SourcedField[] = [];
   const priceFields: SourcedField[] = [];
   const locationFields: SourcedField[] = [];
-  const deliverySignals: Array<{ negative: boolean; evidence: string; url: string }> = [];
+  const deliverySignals: Array<{ negative: boolean; evidence: string; url: string; method: "explicit" | "network" }> = [];
 
   for (const result of eligible) {
     const product = extractProduct(result.title, result.content, result.url);
@@ -193,8 +229,11 @@ export function extractVerifiedEnrichment(
     }
     const location = explicitLocation(result);
     if (location) locationFields.push(location);
-    const signal = deliverySignal(result, context.deliveryRegion);
-    if (signal) deliverySignals.push({ ...signal, url: result.url });
+    const explicitSignal = deliverySignal(result, context.deliveryRegion);
+    const networkSignal = context.sourceType === "marketplace"
+      ? marketplaceDeliveryNetworkSignal(result, context.deliveryRegion) : null;
+    const signal = networkSignal ?? explicitSignal;
+    if (signal) deliverySignals.push({ ...signal, url: result.url, method: networkSignal ? "network" : "explicit" });
   }
 
   const hasPositive = deliverySignals.some(signal => !signal.negative);
@@ -213,6 +252,10 @@ export function extractVerifiedEnrichment(
       evidence: decisive?.evidence ?? null,
       sourceUrl: decisive?.url ?? null,
       sourceType: decisive ? context.sourceType : null,
+      ...(decisive ? { confirmationMethod: context.sourceType === "marketplace"
+          ? decisive.method === "network" ? "marketplace_delivery_network" : "marketplace_explicit_delivery"
+          : context.sourceType
+      } : {}),
     },
   };
 }
@@ -240,18 +283,23 @@ export async function enrichSupplier(
   diagnostics?: EnrichmentDiagnostics,
   requestedMaxMoq: string | null = null,
 ): Promise<EnrichmentResult> {
-  const supplierHostname = canonicalSupplierDomain(supplier.domain ?? hostname(supplier.url));
+  const supplierHostname = supplier.domain
+    ? canonicalSupplierDomain(supplier.domain)
+    : sourceTypeForUrl(supplier.url) === "official" ? canonicalSupplierDomain(hostname(supplier.url)) : "";
   const empty = extractVerifiedEnrichment([], { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official" });
   const discoveredSources = supplier.evidenceSources ?? [];
   const discoveredOfficial = extractVerifiedEnrichment(discoveredSources.filter(source => supplierHostname
     && canonicalSupplierDomain(source.url) === supplierHostname), {
     supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official",
   });
-  const discoveredExternal = extractVerifiedEnrichment(discoveredSources.filter(source => !supplierHostname
-    || canonicalSupplierDomain(source.url) !== supplierHostname), {
+  const discoveredExternal = extractVerifiedEnrichment(discoveredSources.filter(source => sourceTypeForUrl(source.url) !== "marketplace"
+    && (!supplierHostname || canonicalSupplierDomain(source.url) !== supplierHostname)), {
     supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external",
   });
-  const discoveredEvidence = mergeEnrichment(discoveredOfficial, discoveredExternal);
+  const discoveredMarketplace = extractVerifiedEnrichment(discoveredSources.filter(source => sourceTypeForUrl(source.url) === "marketplace"), {
+    supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "marketplace",
+  });
+  const discoveredEvidence = mergeEnrichment(mergeEnrichment(discoveredOfficial, discoveredMarketplace), discoveredExternal);
   let official = empty;
   const moqRequirement = requestedMaxMoq ? `buyer maximum MOQ ${requestedMaxMoq}` : "";
   const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price ${moqRequirement} delivery shipping ${deliveryRegion} company legal address`.replace(/\s+/g, " ").trim();

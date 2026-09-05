@@ -232,6 +232,9 @@ export default async function handler(
     supplierName?: string | null;
     supplierDomain?: string | null;
     sourceType?: string | null;
+    marketplaceDomain?: string | null;
+    marketplaceSeller?: string | null;
+    productEvidence?: string | null;
     b2bEvidence?: string[];
   };
   function evaluateDiscovery(results: TavilyResult[]) {
@@ -252,6 +255,9 @@ export default async function handler(
         extractedProduct: fields.product?.value ?? null, productRelevant,
         supplierName: identity?.name ?? null, supplierDomain: identity?.domain ?? null,
         sourceType: identity?.sourceType ?? null,
+        marketplaceDomain: identity?.sourceType === "marketplace" ? hostnameKey(url) : null,
+        marketplaceSeller: identity?.sourceType === "marketplace" ? identity.name : null,
+        productEvidence: fields.product?.evidence ?? null,
         b2bEvidence: qualification.qualified ? qualification.evidence : [],
       });
       if (!identity || !qualification.qualified) continue;
