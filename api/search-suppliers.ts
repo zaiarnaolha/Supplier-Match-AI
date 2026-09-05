@@ -77,15 +77,57 @@ function diagnosticsLog(prefix: "PRIMARY" | "OFFICIAL" | "EXTERNAL" | "FINAL" | 
 }
 
 const PRIMARY_DISCOVERY_MAX_RESULTS = 20;
-const FALLBACK_DISCOVERY_MAX_RESULTS = 10;
-const MIN_VIABLE_PRIMARY_DOMAINS = 1;
+const ADDITIONAL_DISCOVERY_MAX_RESULTS = 10;
+const TARGET_VIABLE_SUPPLIER_DOMAINS = 5;
 
-function primaryDiscoveryQuery(product: string): string {
-  return `${product} wholesale supplier manufacturer distributor B2B`;
+interface DiscoveryMarket {
+  market: string;
+  language: string;
+  regionAliases: readonly string[];
+  primaryIntent: string;
+  additionalIntent: string;
 }
 
-function fallbackDiscoveryQuery(product: string): string {
-  return `${product} wholesale catalog bulk trade distributor manufacturer`;
+const DISCOVERY_MARKETS: readonly DiscoveryMarket[] = [
+  {
+    market: "Ukraine",
+    language: "uk",
+    regionAliases: ["україна", "ukraine"],
+    primaryIntent: "оптом постачальник виробник дистриб'ютор",
+    additionalIntent: "гуртом оптовий продаж постачальники для бізнесу",
+  },
+  {
+    market: "Poland",
+    language: "pl",
+    regionAliases: ["polska", "poland", "польща"],
+    primaryIntent: "hurtownia dostawca producent dystrybutor B2B",
+    additionalIntent: "sprzedaż hurtowa dostawcy dla firm",
+  },
+  {
+    market: "Germany",
+    language: "de",
+    regionAliases: ["deutschland", "germany", "німеччина"],
+    primaryIntent: "Großhandel Lieferant Hersteller Händler B2B",
+    additionalIntent: "Großhandelsverkauf Lieferanten für Unternehmen",
+  },
+];
+
+const DEFAULT_DISCOVERY_MARKET: DiscoveryMarket = {
+  market: "International",
+  language: "en",
+  regionAliases: [],
+  primaryIntent: "wholesale supplier manufacturer distributor B2B",
+  additionalIntent: "bulk trade wholesale sales suppliers for business",
+};
+
+function discoveryMarket(deliveryRegion: string): DiscoveryMarket {
+  const normalizedRegion = deliveryRegion.trim().toLocaleLowerCase();
+  return DISCOVERY_MARKETS.find(candidate => candidate.regionAliases.includes(normalizedRegion))
+    ?? DEFAULT_DISCOVERY_MARKET;
+}
+
+function discoveryQuery(product: string, intent: string): string {
+  return `${product} ${intent}`.replace(/\s+/g, " ").trim();
 }
 
 function structuredCriteriaFromBody(
@@ -209,7 +251,8 @@ export default async function handler(
   const normalizedDeliveryRegion = criteria.deliveryRegion;
   const requestedProduct = extractProduct(criteria.product ?? normalizedQuery, "", "");
   const discoveryProduct = criteria.product ?? normalizedQuery;
-  const searchQuery = primaryDiscoveryQuery(discoveryProduct);
+  const market = discoveryMarket(normalizedDeliveryRegion);
+  const searchQuery = discoveryQuery(discoveryProduct, market.primaryIntent);
 
   let primaryResults: TavilyResult[];
   try {
@@ -229,7 +272,7 @@ export default async function handler(
     : null;
   const diagnosticResults: Array<{
     index: number;
-    discoveryStage: "primary" | "fallback";
+    discoveryStage: "primary" | "additional";
     title: string;
     url: string;
     hostname: string;
@@ -242,7 +285,7 @@ export default async function handler(
   let productRelevantCount = 0;
   const productRelevantCandidates: Array<{ title: string; url: string; hostname: string }> = [];
 
-  const evaluateResults = (results: TavilyResult[], discoveryStage: "primary" | "fallback") => {
+  const evaluateResults = (results: TavilyResult[], discoveryStage: "primary" | "additional") => {
     for (const [resultIndex, { title, url, content, score }] of results.entries()) {
       const qualification = qualifySupplierCandidate(title, content, url);
 
@@ -284,19 +327,24 @@ export default async function handler(
 
   evaluateResults(primaryResults, "primary");
 
-  let fallbackResults: TavilyResult[] = [];
-  let fallbackQuery: string | null = null;
-  if (candidates.length < MIN_VIABLE_PRIMARY_DOMAINS) {
-    fallbackQuery = fallbackDiscoveryQuery(discoveryProduct);
+  const primaryViableDomainCount = candidates.length;
+  let additionalResults: TavilyResult[] = [];
+  let additionalQuery: string | null = null;
+  const additionalDiscoveryTriggered = primaryViableDomainCount < TARGET_VIABLE_SUPPLIER_DOMAINS;
+  const additionalDiscoveryReason = additionalDiscoveryTriggered
+    ? `primary produced ${primaryViableDomainCount} viable domains; target is ${TARGET_VIABLE_SUPPLIER_DOMAINS}`
+    : null;
+  if (additionalDiscoveryTriggered) {
+    additionalQuery = discoveryQuery(discoveryProduct, market.additionalIntent);
     try {
-      fallbackResults = await tavilySearch(apiKey, fallbackQuery, { maxResults: FALLBACK_DISCOVERY_MAX_RESULTS });
-      evaluateResults(fallbackResults, "fallback");
+      additionalResults = await tavilySearch(apiKey, additionalQuery, { maxResults: ADDITIONAL_DISCOVERY_MAX_RESULTS });
+      evaluateResults(additionalResults, "additional");
     } catch {
-      // Primary discovery succeeded, so a best-effort fallback failure must not fail the request.
+      // Primary discovery succeeded, so a best-effort additional search failure must not fail the request.
     }
   }
 
-  const tavilyResults = [...primaryResults, ...fallbackResults];
+  const tavilyResults = [...primaryResults, ...additionalResults];
 
   if (diagnosticsEnabled) {
     diagnosticsLog("PRIMARY", {
@@ -304,10 +352,14 @@ export default async function handler(
       normalizedQuery,
       criteria,
       deliveryRegion: normalizedDeliveryRegion,
+      detectedDeliveryMarket: market.market,
+      discoveryLanguage: market.language,
       primaryQuery: searchQuery,
-      fallbackQuery,
+      additionalQuery,
+      additionalDiscoveryTriggered,
+      additionalDiscoveryReason,
       primaryRawResults: primaryResults.map((result, index) => diagnosticRawResult(result, index)),
-      fallbackRawResults: fallbackResults.map((result, index) => diagnosticRawResult(result, index)),
+      additionalRawResults: additionalResults.map((result, index) => diagnosticRawResult(result, index)),
       combinedRawResults: tavilyResults.map((result, index) => diagnosticRawResult(result, index)),
       evaluations: diagnosticResults,
       afterQualificationAndProductRelevance: productRelevantCandidates,
@@ -396,10 +448,14 @@ export default async function handler(
     }
     diagnosticsLog("SUMMARY", {
       requestId,
+      detectedDeliveryMarket: market.market,
+      discoveryLanguage: market.language,
       primaryQuery: searchQuery,
-      fallbackQuery,
+      additionalQuery,
+      additionalDiscoveryTriggered,
+      additionalDiscoveryReason,
       primaryRawCount: primaryResults.length,
-      fallbackRawCount: fallbackResults.length,
+      additionalRawCount: additionalResults.length,
       combinedRawCount: tavilyResults.length,
       qualifiedCount: qualifiedResultCount,
       productRelevantCount,
