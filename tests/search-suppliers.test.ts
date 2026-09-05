@@ -3,7 +3,7 @@ import test from "node:test";
 import handler from "../api/search-suppliers.ts";
 import { buildSupplierSearchRequest } from "../shared/supplier-search-criteria.ts";
 
-type Payload = { query?: string; include_domains?: string[] };
+type Payload = { query?: string; include_domains?: string[]; max_results?: number };
 
 function tavily(results: unknown[]): Response {
   return new Response(JSON.stringify({ results }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -45,6 +45,7 @@ test("qualification happens before hostname dedupe and enrichment retains one ca
       supplier("https://exact-coffee.example/catalog/coffee"),
       supplier("https://www.exact-coffee.example/wholesale", 0.8),
     ]);
+    if (calls.length === 2) return tavily([]);
     return tavily([{
       title: "Доставка — Exact Coffee", url: "https://exact-coffee.example/delivery",
       content: "Кава в зернах. Доставка по Україні.", score: 0.9,
@@ -56,8 +57,8 @@ test("qualification happens before hostname dedupe and enrichment retains one ca
     assert.equal(response.responseBody.results.length, 1);
     assert.equal(response.responseBody.results[0].url, "https://exact-coffee.example/catalog/coffee");
     assert.deepEqual((response.responseBody.results[0].delivery as { status: string }).status, "confirmed");
-    assert.equal(calls.length, 2);
-    assert.deepEqual(calls[1].include_domains, ["exact-coffee.example"]);
+    assert.equal(calls.length, 3);
+    assert.deepEqual(calls[2].include_domains, ["exact-coffee.example"]);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
@@ -78,7 +79,7 @@ test("official and external verification failures do not fail the whole supplier
     const response = await invoke();
     assert.equal(response.statusCode, 200);
     assert.equal(response.responseBody.results.length, 0, "unconfirmed delivery must not reach the API response");
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
@@ -103,7 +104,7 @@ test("a qualified supplier irrelevant to the requested product is rejected", asy
     );
     assert.equal(statusCode, 200);
     assert.deepEqual((body as { results: unknown[] }).results, []);
-    assert.equal(calls, 1);
+    assert.equal(calls, 2, "one bounded fallback runs when primary discovery has no viable product supplier");
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
@@ -120,9 +121,11 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
   process.env.TAVILY_API_KEY = "secret-test-key";
   process.env.SUPPLIER_SEARCH_DIAGNOSTICS = "true";
   console.log = (...values: unknown[]) => { logs.push(values.map(String).join(" ")); };
-  globalThis.fetch = async () => {
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as Payload;
     calls += 1;
     if (calls === 1) return tavily([supplier("https://exact-coffee.example/catalog/coffee")]);
+    if (payload.max_results === 10) return tavily([]);
     return tavily([{
       title: "Exact Coffee delivery",
       url: "https://exact-coffee.example/delivery",
@@ -132,7 +135,7 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
   };
   try {
     const response = await invoke();
-    assert.equal(calls, 2, "diagnostics must not add Tavily calls");
+    assert.equal(calls, 3, "diagnostics must not add Tavily calls");
     assert.equal("diagnostics" in response.responseBody, false);
     assert.equal(JSON.stringify(response.responseBody).includes("SUPPLIER_DIAGNOSTICS"), false);
     assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][PRIMARY]")));
@@ -144,6 +147,8 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
     assert.equal(logs.join("\n").includes("x".repeat(1201)), false, "logged snippets must be truncated");
     const summaryLine = logs.find(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][SUMMARY]")) ?? "";
     assert.match(summaryLine, /"primaryRawCount":1/);
+    assert.match(summaryLine, /"additionalRawCount":0/);
+    assert.match(summaryLine, /"combinedRawCount":1/);
     assert.match(summaryLine, /"officialCalls":1/);
     assert.match(summaryLine, /"externalCalls":0/);
     assert.match(summaryLine, /"returnedCount":1/);
@@ -171,7 +176,8 @@ test("control criteria reach backend and target both enrichment queries without 
     const payload = JSON.parse(String(init?.body)) as Payload;
     calls.push(payload);
     if (calls.length === 1) return tavily([supplier("https://exact-coffee.example/catalog/coffee")]);
-    if (calls.length === 2) return tavily([{
+    if (calls.length === 2) return tavily([]);
+    if (calls.length === 3) return tavily([{
       title: "Exact Coffee catalog", url: "https://exact-coffee.example/catalog",
       content: "Whole bean coffee for cafes.", score: 0.8,
     }]);
@@ -183,27 +189,129 @@ test("control criteria reach backend and target both enrichment queries without 
   try {
     const response = await invoke(buildSupplierSearchRequest(query));
     assert.equal(response.statusCode, 200);
-    assert.equal(calls.length, 3);
-    const expectedPrimaryQuery = "Кава в зернах Find actual suppliers, manufacturers, distributors, or wholesalers that sell or distribute the requested product. Prioritize official supplier or manufacturer websites, product catalog pages, and wholesale or B2B supplier pages. Exclude blog posts, news articles, guides, educational content, how to choose a supplier articles, and general informational pages.";
+    assert.equal(calls.length, 4);
+    const expectedPrimaryQuery = "Кава в зернах оптом постачальник виробник дистриб'ютор";
     assert.equal(calls[0].query, expectedPrimaryQuery);
     assert.match(calls[0].query ?? "", /^Кава в зернах /);
-    assert.doesNotMatch(calls[0].query ?? "", /Україна|delivery region|MOQ|20 кг/iu);
-    assert.match(calls[1].query ?? "", /buyer maximum MOQ до 20 кг/);
-    assert.match(calls[1].query ?? "", /delivery shipping Україна/);
-    assert.match(calls[2].query ?? "", /до 20 кг Україна shipping delivery/);
-    assert.equal(calls[1].query, "Кава в зернах wholesale B2B catalog MOQ minimum order price buyer maximum MOQ до 20 кг delivery shipping Україна company legal address");
-    assert.equal(calls[2].query, "\"Exact Coffee — кава в зернах оптом\" \"exact-coffee.example\" Кава в зернах buyer maximum MOQ до 20 кг Україна shipping delivery wholesale distributor");
+    assert.doesNotMatch(calls[0].query ?? "", /Україна|delivery region|MOQ|20 кг|wholesale|supplier|manufacturer|distributor|\bkava\b/iu);
+    assert.equal(calls[0].max_results, 20, "primary discovery must request a pool larger than Tavily's default five");
+    assert.equal(calls[1].query, "Кава в зернах гуртом оптовий продаж постачальники для бізнесу");
+    assert.match(calls[2].query ?? "", /buyer maximum MOQ до 20 кг/);
+    assert.match(calls[2].query ?? "", /delivery shipping Україна/);
+    assert.match(calls[3].query ?? "", /до 20 кг Україна shipping delivery/);
     assert.equal(response.responseBody.results.length, 1);
     assert.equal(response.responseBody.results[0].moq, null, "requested MOQ must not become supplier MOQ");
     assert.equal(response.responseBody.results[0].supplierLocation, null, "delivery region must not become supplier location");
     assert.equal((response.responseBody.results[0].delivery as { status: string }).status, "confirmed");
     const primaryLog = logs.find(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][PRIMARY]")) ?? "";
     assert.match(primaryLog, /"criteria":\{"product":"Кава в зернах","deliveryRegion":"Україна","maxMoq":\{"value":20/);
+    assert.match(primaryLog, /"detectedDeliveryMarket":"Ukraine"/);
+    assert.match(primaryLog, /"discoveryLanguage":"uk"/);
+    assert.match(primaryLog, /"additionalDiscoveryTriggered":true/);
+    assert.match(primaryLog, /"additionalDiscoveryReason":"primary produced 1 viable domains; target is 5"/);
   } finally {
     globalThis.fetch = originalFetch;
     console.log = originalLog;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
     if (originalDiagnostics === undefined) delete process.env.SUPPLIER_SEARCH_DIAGNOSTICS;
     else process.env.SUPPLIER_SEARCH_DIAGNOSTICS = originalDiagnostics;
+  }
+});
+
+test("additional discovery is distinct, market-language aligned, bounded, and runs at most once", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  const calls: Payload[] = [];
+  process.env.TAVILY_API_KEY = "test-key";
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    calls.push(payload);
+    if (calls.length === 1) return tavily([{
+      title: "How to choose coffee suppliers",
+      url: "https://editorial.example/blog/guide",
+      content: "A guide to finding wholesale coffee suppliers.",
+      score: 0.9,
+    }]);
+    if (calls.length === 2) return tavily([]);
+    throw new Error("unexpected unbounded search call");
+  };
+  try {
+    const response = await invoke();
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.responseBody.results, []);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].max_results, 20);
+    assert.equal(calls[1].max_results, 10);
+    assert.notEqual(calls[1].query, calls[0].query);
+    assert.match(calls[1].query ?? "", /гуртом оптовий продаж постачальники для бізнесу/);
+    assert.doesNotMatch(calls[1].query ?? "", /Ukraine|Україна|MOQ|20 кг/iu);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+  }
+});
+
+test("five viable primary domains skip additional discovery", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  const calls: Payload[] = [];
+  process.env.TAVILY_API_KEY = "test-key";
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    calls.push(payload);
+    if (payload.max_results === 20) {
+      return tavily(Array.from({ length: 5 }, (_, index) => supplier(`https://coffee-${index}.example/catalog`)));
+    }
+    assert.notEqual(payload.max_results, 10, "additional discovery must not run after five viable domains");
+    return tavily([{
+      title: "Доставка кави", url: `https://${payload.include_domains?.[0]}/delivery`,
+      content: "Кава в зернах. Доставка по Україні.", score: 0.8,
+    }]);
+  };
+  try {
+    const response = await invoke({
+      query: "Кава в зернах",
+      deliveryRegion: "Україна",
+      criteria: { product: "Кава в зернах", deliveryRegion: "Україна", maxMoq: null },
+    });
+    assert.equal(response.responseBody.results.length, 5);
+    assert.equal(calls.filter(call => call.max_results === 20).length, 1);
+    assert.equal(calls.filter(call => call.max_results === 10).length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+  }
+});
+
+test("primary and additional pages combine and dedupe into unique supplier domains", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  const calls: Payload[] = [];
+  process.env.TAVILY_API_KEY = "test-key";
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    calls.push(payload);
+    if (payload.max_results === 20) return tavily([supplier("https://coffee-0.example/catalog")]);
+    if (payload.max_results === 10) return tavily([
+      supplier("https://www.coffee-0.example/wholesale"),
+      ...Array.from({ length: 4 }, (_, index) => supplier(`https://coffee-${index + 1}.example/catalog`)),
+    ]);
+    return tavily([{
+      title: "Доставка кави", url: `https://${payload.include_domains?.[0]}/delivery`,
+      content: "Кава в зернах. Доставка по Україні.", score: 0.8,
+    }]);
+  };
+  try {
+    const response = await invoke({
+      query: "Кава в зернах",
+      deliveryRegion: "Україна",
+      criteria: { product: "Кава в зернах", deliveryRegion: "Україна", maxMoq: null },
+    });
+    assert.equal(response.responseBody.results.length, 5);
+    assert.equal(new Set(response.responseBody.results.map(result => new URL(String(result.url)).hostname.replace(/^www\./, ""))).size, 5);
+    assert.equal(calls.filter(call => call.max_results === 10).length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
   }
 });

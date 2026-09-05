@@ -76,6 +76,60 @@ function diagnosticsLog(prefix: "PRIMARY" | "OFFICIAL" | "EXTERNAL" | "FINAL" | 
   console.log(`[SUPPLIER_DIAGNOSTICS][${prefix}]`, JSON.stringify(payload));
 }
 
+const PRIMARY_DISCOVERY_MAX_RESULTS = 20;
+const ADDITIONAL_DISCOVERY_MAX_RESULTS = 10;
+const TARGET_VIABLE_SUPPLIER_DOMAINS = 5;
+
+interface DiscoveryMarket {
+  market: string;
+  language: string;
+  regionAliases: readonly string[];
+  primaryIntent: string;
+  additionalIntent: string;
+}
+
+const DISCOVERY_MARKETS: readonly DiscoveryMarket[] = [
+  {
+    market: "Ukraine",
+    language: "uk",
+    regionAliases: ["україна", "ukraine"],
+    primaryIntent: "оптом постачальник виробник дистриб'ютор",
+    additionalIntent: "гуртом оптовий продаж постачальники для бізнесу",
+  },
+  {
+    market: "Poland",
+    language: "pl",
+    regionAliases: ["polska", "poland", "польща"],
+    primaryIntent: "hurtownia dostawca producent dystrybutor B2B",
+    additionalIntent: "sprzedaż hurtowa dostawcy dla firm",
+  },
+  {
+    market: "Germany",
+    language: "de",
+    regionAliases: ["deutschland", "germany", "німеччина"],
+    primaryIntent: "Großhandel Lieferant Hersteller Händler B2B",
+    additionalIntent: "Großhandelsverkauf Lieferanten für Unternehmen",
+  },
+];
+
+const DEFAULT_DISCOVERY_MARKET: DiscoveryMarket = {
+  market: "International",
+  language: "en",
+  regionAliases: [],
+  primaryIntent: "wholesale supplier manufacturer distributor B2B",
+  additionalIntent: "bulk trade wholesale sales suppliers for business",
+};
+
+function discoveryMarket(deliveryRegion: string): DiscoveryMarket {
+  const normalizedRegion = deliveryRegion.trim().toLocaleLowerCase();
+  return DISCOVERY_MARKETS.find(candidate => candidate.regionAliases.includes(normalizedRegion))
+    ?? DEFAULT_DISCOVERY_MARKET;
+}
+
+function discoveryQuery(product: string, intent: string): string {
+  return `${product} ${intent}`.replace(/\s+/g, " ").trim();
+}
+
 function structuredCriteriaFromBody(
   query: string,
   deliveryRegion: string,
@@ -196,18 +250,13 @@ export default async function handler(
   const criteria = structuredCriteriaFromBody(normalizedQuery, deliveryRegion.trim(), requestCriteria);
   const normalizedDeliveryRegion = criteria.deliveryRegion;
   const requestedProduct = extractProduct(criteria.product ?? normalizedQuery, "", "");
-  const searchQuery = [
-    criteria.product ?? normalizedQuery,
-    "Find actual suppliers, manufacturers, distributors, or wholesalers that sell or distribute the requested product.",
-    "Prioritize official supplier or manufacturer websites, product catalog pages, and wholesale or B2B supplier pages.",
-    "Exclude blog posts, news articles, guides, educational content, how to choose a supplier articles, and general informational pages.",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const discoveryProduct = criteria.product ?? normalizedQuery;
+  const market = discoveryMarket(normalizedDeliveryRegion);
+  const searchQuery = discoveryQuery(discoveryProduct, market.primaryIntent);
 
-  let tavilyResults: TavilyResult[];
+  let primaryResults: TavilyResult[];
   try {
-    tavilyResults = await tavilySearch(apiKey, searchQuery, { maxResults: 5 });
+    primaryResults = await tavilySearch(apiKey, searchQuery, { maxResults: PRIMARY_DISCOVERY_MAX_RESULTS });
   } catch {
     response.status(502).json({
       error: "Supplier search service is currently unavailable.",
@@ -223,6 +272,7 @@ export default async function handler(
     : null;
   const diagnosticResults: Array<{
     index: number;
+    discoveryStage: "primary" | "additional";
     title: string;
     url: string;
     hostname: string;
@@ -235,42 +285,66 @@ export default async function handler(
   let productRelevantCount = 0;
   const productRelevantCandidates: Array<{ title: string; url: string; hostname: string }> = [];
 
-  for (const [resultIndex, { title, url, content, score }] of tavilyResults.entries()) {
-    const qualification = qualifySupplierCandidate(title, content, url);
+  const evaluateResults = (results: TavilyResult[], discoveryStage: "primary" | "additional") => {
+    for (const [resultIndex, { title, url, content, score }] of results.entries()) {
+      const qualification = qualifySupplierCandidate(title, content, url);
 
-    const fields = extractSupplierFields(title, content, url);
-    const productRelevant = Boolean(
-      qualification.qualified
-      && fields.product
-      && requestedProduct
-      && fields.product.value === requestedProduct.value,
-    );
-    if (diagnosticsEnabled) {
-      diagnosticResults.push({
-        index: resultIndex,
-        title,
-        url,
-        hostname: hostnameKey(url),
-        accepted: qualification.qualified,
-        reason: qualification.qualified ? null : qualification.reason,
-        extractedProduct: fields.product?.value ?? null,
-        productRelevant,
-      });
+      const fields = extractSupplierFields(title, content, url);
+      const productRelevant = Boolean(
+        qualification.qualified
+        && fields.product
+        && requestedProduct
+        && fields.product.value === requestedProduct.value,
+      );
+      if (diagnosticsEnabled) {
+        diagnosticResults.push({
+          index: resultIndex,
+          discoveryStage,
+          title,
+          url,
+          hostname: hostnameKey(url),
+          accepted: qualification.qualified,
+          reason: qualification.qualified ? null : qualification.reason,
+          extractedProduct: fields.product?.value ?? null,
+          productRelevant,
+        });
+      }
+
+      if (!qualification.qualified) continue;
+      qualifiedResultCount += 1;
+      // Supplier identity alone is insufficient: the primary evidence must also name the requested product.
+      if (!fields.product || !requestedProduct || fields.product.value !== requestedProduct.value) continue;
+      productRelevantCount += 1;
+
+      const hostname = hostnameKey(url);
+      productRelevantCandidates.push({ title, url, hostname });
+      if (seenHostnames.has(hostname)) continue;
+
+      seenHostnames.add(hostname);
+      candidates.push({ title, url, content, score, fields });
     }
+  };
 
-    if (!qualification.qualified) continue;
-    qualifiedResultCount += 1;
-    // Supplier identity alone is insufficient: the primary evidence must also name the requested product.
-    if (!fields.product || !requestedProduct || fields.product.value !== requestedProduct.value) continue;
-    productRelevantCount += 1;
+  evaluateResults(primaryResults, "primary");
 
-    const hostname = hostnameKey(url);
-    productRelevantCandidates.push({ title, url, hostname });
-    if (seenHostnames.has(hostname)) continue;
-
-    seenHostnames.add(hostname);
-    candidates.push({ title, url, content, score, fields });
+  const primaryViableDomainCount = candidates.length;
+  let additionalResults: TavilyResult[] = [];
+  let additionalQuery: string | null = null;
+  const additionalDiscoveryTriggered = primaryViableDomainCount < TARGET_VIABLE_SUPPLIER_DOMAINS;
+  const additionalDiscoveryReason = additionalDiscoveryTriggered
+    ? `primary produced ${primaryViableDomainCount} viable domains; target is ${TARGET_VIABLE_SUPPLIER_DOMAINS}`
+    : null;
+  if (additionalDiscoveryTriggered) {
+    additionalQuery = discoveryQuery(discoveryProduct, market.additionalIntent);
+    try {
+      additionalResults = await tavilySearch(apiKey, additionalQuery, { maxResults: ADDITIONAL_DISCOVERY_MAX_RESULTS });
+      evaluateResults(additionalResults, "additional");
+    } catch {
+      // Primary discovery succeeded, so a best-effort additional search failure must not fail the request.
+    }
   }
+
+  const tavilyResults = [...primaryResults, ...additionalResults];
 
   if (diagnosticsEnabled) {
     diagnosticsLog("PRIMARY", {
@@ -278,8 +352,15 @@ export default async function handler(
       normalizedQuery,
       criteria,
       deliveryRegion: normalizedDeliveryRegion,
-      tavilyQuery: searchQuery,
-      rawResults: tavilyResults.map((result, index) => diagnosticRawResult(result, index)),
+      detectedDeliveryMarket: market.market,
+      discoveryLanguage: market.language,
+      primaryQuery: searchQuery,
+      additionalQuery,
+      additionalDiscoveryTriggered,
+      additionalDiscoveryReason,
+      primaryRawResults: primaryResults.map((result, index) => diagnosticRawResult(result, index)),
+      additionalRawResults: additionalResults.map((result, index) => diagnosticRawResult(result, index)),
+      combinedRawResults: tavilyResults.map((result, index) => diagnosticRawResult(result, index)),
       evaluations: diagnosticResults,
       afterQualificationAndProductRelevance: productRelevantCandidates,
       afterHostnameDedupe: candidates.map(candidate => ({ title: candidate.title, url: candidate.url, hostname: hostnameKey(candidate.url) })),
@@ -367,7 +448,15 @@ export default async function handler(
     }
     diagnosticsLog("SUMMARY", {
       requestId,
-      primaryRawCount: tavilyResults.length,
+      detectedDeliveryMarket: market.market,
+      discoveryLanguage: market.language,
+      primaryQuery: searchQuery,
+      additionalQuery,
+      additionalDiscoveryTriggered,
+      additionalDiscoveryReason,
+      primaryRawCount: primaryResults.length,
+      additionalRawCount: additionalResults.length,
+      combinedRawCount: tavilyResults.length,
       qualifiedCount: qualifiedResultCount,
       productRelevantCount,
       dedupedCount: candidates.length,
