@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import type { Supplier } from '@/data/suppliers';
 import { CriterionStatusIcon } from '@/components/CriterionStatusIcon/CriterionStatusIcon';
-import { Box, ChevronDown, MapPin, RotateCcw, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { Box, ChevronDown, RotateCcw, Search, SlidersHorizontal, Sparkles } from 'lucide-react';
 import styles from './SupplierSearchPage.module.css';
 import { buildSupplierSearchRequest } from '../../../shared/supplier-search-criteria';
 
@@ -49,7 +49,7 @@ function SupplierCard({ supplier, isSelected, onCompareChange }: SupplierCardPro
     <div className={styles.supplierSummary}>
       <div className={styles.supplierIdentity}>
         <div className={styles.supplierIcon}><Box size={21} /></div>
-        <div className={styles.supplierInfo}><h3>{supplier.name}</h3><p><MapPin size={13} />{supplier.location}</p></div>
+        <div className={styles.supplierInfo}><h3>{supplier.name}</h3></div>
       </div>
       <div className={styles.matchSummary}>
         <div className={styles.matchBlock}><strong>{score}%</strong><span>Match</span></div>

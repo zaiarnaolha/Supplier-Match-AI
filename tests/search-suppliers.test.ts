@@ -483,3 +483,48 @@ test("pipeline separates discovery identity and supplier-specific facts without 
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
   }
 });
+
+test("supplier found during enrichment is promoted once without contaminating the current supplier", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  process.env.TAVILY_API_KEY = "test-key";
+  let calls = 0;
+  let discoveryCalls = 0;
+  globalThis.fetch = async (_input, init) => {
+    calls += 1;
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    if (!payload.include_domains && !payload.query?.startsWith('"')) {
+      discoveryCalls += 1;
+      return discoveryCalls === 1 ? tavily([{
+        title: "Alpha Coffee", url: "https://alpha-coffee.example/b2b",
+        content: "Компанія: Alpha Coffee. Кава в зернах оптом для HoReCa.", score: 0.95,
+      }]) : tavily([]);
+    }
+    if (payload.include_domains?.[0] === "alpha-coffee.example") return tavily([]);
+    if (payload.query?.startsWith('"Alpha Coffee"')) return tavily([{
+      title: "BUNO | Кава для бізнесу", url: "https://buno.example/wholesale",
+      content: "Компанія: BUNO. Виробник кави в зернах оптом для HoReCa. MOQ 50 кг. Оптова ціна 1100 грн/кг. Доставка по Україні.", score: 0.9,
+    }]);
+    if (payload.include_domains?.[0] === "buno.example") return tavily([{
+      title: "Coffeeton", url: "https://coffeeton.example/wholesale",
+      content: "Компанія: Coffeeton. Кава в зернах оптом для HoReCa. Доставка по Україні.", score: 0.8,
+    }]);
+    return tavily([]);
+  };
+  try {
+    const response = await invoke(buildSupplierSearchRequest("Шукаю постачальника кави в зернах в Україні, MOQ до 20 кг"));
+    assert.equal(discoveryCalls, 3, "promotion does not add discovery passes");
+    assert.equal(calls, 6, "one promoted generation has a finite enrichment budget");
+    assert.deepEqual(response.responseBody.results.map(item => item.title), ["BUNO"]);
+    const buno = response.responseBody.results[0];
+    assert.equal(buno.moq, "50 кг", "verified actual MOQ survives a lower buyer preference");
+    assert.equal(buno.price, "1100 грн/кг");
+    assert.equal(response.responseBody.results.some(item => item.title === "Alpha Coffee"), false,
+      "supplier B delivery and facts cannot make supplier A eligible");
+    assert.equal(response.responseBody.results.some(item => item.title === "Coffeeton"), false,
+      "evidence found while enriching a promoted supplier is not recursively promoted");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+  }
+});
