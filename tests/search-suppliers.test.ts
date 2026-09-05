@@ -3,7 +3,7 @@ import test from "node:test";
 import handler from "../api/search-suppliers.ts";
 import { buildSupplierSearchRequest } from "../shared/supplier-search-criteria.ts";
 
-type Payload = { query?: string; include_domains?: string[] };
+type Payload = { query?: string; include_domains?: string[]; max_results?: number };
 
 function tavily(results: unknown[]): Response {
   return new Response(JSON.stringify({ results }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -103,7 +103,7 @@ test("a qualified supplier irrelevant to the requested product is rejected", asy
     );
     assert.equal(statusCode, 200);
     assert.deepEqual((body as { results: unknown[] }).results, []);
-    assert.equal(calls, 1);
+    assert.equal(calls, 2, "one bounded fallback runs when primary discovery has no viable product supplier");
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
@@ -144,6 +144,8 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
     assert.equal(logs.join("\n").includes("x".repeat(1201)), false, "logged snippets must be truncated");
     const summaryLine = logs.find(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][SUMMARY]")) ?? "";
     assert.match(summaryLine, /"primaryRawCount":1/);
+    assert.match(summaryLine, /"fallbackRawCount":0/);
+    assert.match(summaryLine, /"combinedRawCount":1/);
     assert.match(summaryLine, /"officialCalls":1/);
     assert.match(summaryLine, /"externalCalls":0/);
     assert.match(summaryLine, /"returnedCount":1/);
@@ -184,10 +186,11 @@ test("control criteria reach backend and target both enrichment queries without 
     const response = await invoke(buildSupplierSearchRequest(query));
     assert.equal(response.statusCode, 200);
     assert.equal(calls.length, 3);
-    const expectedPrimaryQuery = "Кава в зернах Find actual suppliers, manufacturers, distributors, or wholesalers that sell or distribute the requested product. Prioritize official supplier or manufacturer websites, product catalog pages, and wholesale or B2B supplier pages. Exclude blog posts, news articles, guides, educational content, how to choose a supplier articles, and general informational pages.";
+    const expectedPrimaryQuery = "Кава в зернах wholesale supplier manufacturer distributor B2B";
     assert.equal(calls[0].query, expectedPrimaryQuery);
     assert.match(calls[0].query ?? "", /^Кава в зернах /);
     assert.doesNotMatch(calls[0].query ?? "", /Україна|delivery region|MOQ|20 кг/iu);
+    assert.equal(calls[0].max_results, 20, "primary discovery must request a pool larger than Tavily's default five");
     assert.match(calls[1].query ?? "", /buyer maximum MOQ до 20 кг/);
     assert.match(calls[1].query ?? "", /delivery shipping Україна/);
     assert.match(calls[2].query ?? "", /до 20 кг Україна shipping delivery/);
@@ -205,5 +208,38 @@ test("control criteria reach backend and target both enrichment queries without 
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
     if (originalDiagnostics === undefined) delete process.env.SUPPLIER_SEARCH_DIAGNOSTICS;
     else process.env.SUPPLIER_SEARCH_DIAGNOSTICS = originalDiagnostics;
+  }
+});
+
+test("fallback discovery is distinct, bounded, and runs at most once after an empty viable primary funnel", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  const calls: Payload[] = [];
+  process.env.TAVILY_API_KEY = "test-key";
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    calls.push(payload);
+    if (calls.length === 1) return tavily([{
+      title: "How to choose coffee suppliers",
+      url: "https://editorial.example/blog/guide",
+      content: "A guide to finding wholesale coffee suppliers.",
+      score: 0.9,
+    }]);
+    if (calls.length === 2) return tavily([]);
+    throw new Error("unexpected unbounded search call");
+  };
+  try {
+    const response = await invoke();
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.responseBody.results, []);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].max_results, 20);
+    assert.equal(calls[1].max_results, 10);
+    assert.notEqual(calls[1].query, calls[0].query);
+    assert.match(calls[1].query ?? "", /wholesale catalog bulk trade distributor manufacturer/);
+    assert.doesNotMatch(calls[1].query ?? "", /Ukraine|Україна|MOQ|20 кг/iu);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
   }
 });

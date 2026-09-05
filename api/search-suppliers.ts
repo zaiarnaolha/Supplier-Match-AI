@@ -76,6 +76,18 @@ function diagnosticsLog(prefix: "PRIMARY" | "OFFICIAL" | "EXTERNAL" | "FINAL" | 
   console.log(`[SUPPLIER_DIAGNOSTICS][${prefix}]`, JSON.stringify(payload));
 }
 
+const PRIMARY_DISCOVERY_MAX_RESULTS = 20;
+const FALLBACK_DISCOVERY_MAX_RESULTS = 10;
+const MIN_VIABLE_PRIMARY_DOMAINS = 1;
+
+function primaryDiscoveryQuery(product: string): string {
+  return `${product} wholesale supplier manufacturer distributor B2B`;
+}
+
+function fallbackDiscoveryQuery(product: string): string {
+  return `${product} wholesale catalog bulk trade distributor manufacturer`;
+}
+
 function structuredCriteriaFromBody(
   query: string,
   deliveryRegion: string,
@@ -196,18 +208,12 @@ export default async function handler(
   const criteria = structuredCriteriaFromBody(normalizedQuery, deliveryRegion.trim(), requestCriteria);
   const normalizedDeliveryRegion = criteria.deliveryRegion;
   const requestedProduct = extractProduct(criteria.product ?? normalizedQuery, "", "");
-  const searchQuery = [
-    criteria.product ?? normalizedQuery,
-    "Find actual suppliers, manufacturers, distributors, or wholesalers that sell or distribute the requested product.",
-    "Prioritize official supplier or manufacturer websites, product catalog pages, and wholesale or B2B supplier pages.",
-    "Exclude blog posts, news articles, guides, educational content, how to choose a supplier articles, and general informational pages.",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const discoveryProduct = criteria.product ?? normalizedQuery;
+  const searchQuery = primaryDiscoveryQuery(discoveryProduct);
 
-  let tavilyResults: TavilyResult[];
+  let primaryResults: TavilyResult[];
   try {
-    tavilyResults = await tavilySearch(apiKey, searchQuery, { maxResults: 5 });
+    primaryResults = await tavilySearch(apiKey, searchQuery, { maxResults: PRIMARY_DISCOVERY_MAX_RESULTS });
   } catch {
     response.status(502).json({
       error: "Supplier search service is currently unavailable.",
@@ -223,6 +229,7 @@ export default async function handler(
     : null;
   const diagnosticResults: Array<{
     index: number;
+    discoveryStage: "primary" | "fallback";
     title: string;
     url: string;
     hostname: string;
@@ -235,42 +242,61 @@ export default async function handler(
   let productRelevantCount = 0;
   const productRelevantCandidates: Array<{ title: string; url: string; hostname: string }> = [];
 
-  for (const [resultIndex, { title, url, content, score }] of tavilyResults.entries()) {
-    const qualification = qualifySupplierCandidate(title, content, url);
+  const evaluateResults = (results: TavilyResult[], discoveryStage: "primary" | "fallback") => {
+    for (const [resultIndex, { title, url, content, score }] of results.entries()) {
+      const qualification = qualifySupplierCandidate(title, content, url);
 
-    const fields = extractSupplierFields(title, content, url);
-    const productRelevant = Boolean(
-      qualification.qualified
-      && fields.product
-      && requestedProduct
-      && fields.product.value === requestedProduct.value,
-    );
-    if (diagnosticsEnabled) {
-      diagnosticResults.push({
-        index: resultIndex,
-        title,
-        url,
-        hostname: hostnameKey(url),
-        accepted: qualification.qualified,
-        reason: qualification.qualified ? null : qualification.reason,
-        extractedProduct: fields.product?.value ?? null,
-        productRelevant,
-      });
+      const fields = extractSupplierFields(title, content, url);
+      const productRelevant = Boolean(
+        qualification.qualified
+        && fields.product
+        && requestedProduct
+        && fields.product.value === requestedProduct.value,
+      );
+      if (diagnosticsEnabled) {
+        diagnosticResults.push({
+          index: resultIndex,
+          discoveryStage,
+          title,
+          url,
+          hostname: hostnameKey(url),
+          accepted: qualification.qualified,
+          reason: qualification.qualified ? null : qualification.reason,
+          extractedProduct: fields.product?.value ?? null,
+          productRelevant,
+        });
+      }
+
+      if (!qualification.qualified) continue;
+      qualifiedResultCount += 1;
+      // Supplier identity alone is insufficient: the primary evidence must also name the requested product.
+      if (!fields.product || !requestedProduct || fields.product.value !== requestedProduct.value) continue;
+      productRelevantCount += 1;
+
+      const hostname = hostnameKey(url);
+      productRelevantCandidates.push({ title, url, hostname });
+      if (seenHostnames.has(hostname)) continue;
+
+      seenHostnames.add(hostname);
+      candidates.push({ title, url, content, score, fields });
     }
+  };
 
-    if (!qualification.qualified) continue;
-    qualifiedResultCount += 1;
-    // Supplier identity alone is insufficient: the primary evidence must also name the requested product.
-    if (!fields.product || !requestedProduct || fields.product.value !== requestedProduct.value) continue;
-    productRelevantCount += 1;
+  evaluateResults(primaryResults, "primary");
 
-    const hostname = hostnameKey(url);
-    productRelevantCandidates.push({ title, url, hostname });
-    if (seenHostnames.has(hostname)) continue;
-
-    seenHostnames.add(hostname);
-    candidates.push({ title, url, content, score, fields });
+  let fallbackResults: TavilyResult[] = [];
+  let fallbackQuery: string | null = null;
+  if (candidates.length < MIN_VIABLE_PRIMARY_DOMAINS) {
+    fallbackQuery = fallbackDiscoveryQuery(discoveryProduct);
+    try {
+      fallbackResults = await tavilySearch(apiKey, fallbackQuery, { maxResults: FALLBACK_DISCOVERY_MAX_RESULTS });
+      evaluateResults(fallbackResults, "fallback");
+    } catch {
+      // Primary discovery succeeded, so a best-effort fallback failure must not fail the request.
+    }
   }
+
+  const tavilyResults = [...primaryResults, ...fallbackResults];
 
   if (diagnosticsEnabled) {
     diagnosticsLog("PRIMARY", {
@@ -278,8 +304,11 @@ export default async function handler(
       normalizedQuery,
       criteria,
       deliveryRegion: normalizedDeliveryRegion,
-      tavilyQuery: searchQuery,
-      rawResults: tavilyResults.map((result, index) => diagnosticRawResult(result, index)),
+      primaryQuery: searchQuery,
+      fallbackQuery,
+      primaryRawResults: primaryResults.map((result, index) => diagnosticRawResult(result, index)),
+      fallbackRawResults: fallbackResults.map((result, index) => diagnosticRawResult(result, index)),
+      combinedRawResults: tavilyResults.map((result, index) => diagnosticRawResult(result, index)),
       evaluations: diagnosticResults,
       afterQualificationAndProductRelevance: productRelevantCandidates,
       afterHostnameDedupe: candidates.map(candidate => ({ title: candidate.title, url: candidate.url, hostname: hostnameKey(candidate.url) })),
@@ -367,7 +396,11 @@ export default async function handler(
     }
     diagnosticsLog("SUMMARY", {
       requestId,
-      primaryRawCount: tavilyResults.length,
+      primaryQuery: searchQuery,
+      fallbackQuery,
+      primaryRawCount: primaryResults.length,
+      fallbackRawCount: fallbackResults.length,
+      combinedRawCount: tavilyResults.length,
       qualifiedCount: qualifiedResultCount,
       productRelevantCount,
       dedupedCount: candidates.length,
