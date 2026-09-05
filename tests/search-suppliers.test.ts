@@ -572,3 +572,70 @@ test("final uniqueness retains one deterministic company row without borrowing d
   ]);
   assert.deepEqual(retained, [{ title: "KavaUA", moq: null, price: null, delivery: "confirmed" }]);
 });
+
+test("post-discovery official evidence improves presentation only and preserves supplier facts and count", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  process.env.TAVILY_API_KEY = "test-key";
+  let discoveryCalls = 0;
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    if (!payload.include_domains && !payload.query?.startsWith('"')) {
+      discoveryCalls += 1;
+      return discoveryCalls === 1 ? tavily([{
+        title: "Euro", url: "https://euro.example/wholesale",
+        content: "Euro company supplies whole bean coffee wholesale to B2B customers. MOQ 25 kg. Price 800 грн/кг. Delivery to Ukraine.", score: 0.91,
+      }]) : tavily([]);
+    }
+    if (payload.include_domains?.[0] === "euro.example") return tavily([{
+      title: "Delivery", url: "https://euro.example/delivery",
+      content: "Company: Euro Roasters GmbH. Whole bean coffee wholesale supplier for B2B. Delivery to Ukraine.", score: 0.8,
+    }]);
+    return tavily([]);
+  };
+  try {
+    const response = await invoke();
+    assert.equal(response.responseBody.results.length, 1);
+    assert.deepEqual(response.responseBody.results[0], {
+      ...response.responseBody.results[0],
+      title: "Euro Roasters GmbH",
+      product: "Кава в зернах",
+      moq: "25 кг",
+      price: "800 грн/кг",
+      score: 0.91,
+    });
+    assert.equal(response.responseBody.results[0].supplierDomain, "euro.example");
+    assert.equal(response.responseBody.results[0].delivery.status, "confirmed");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+  }
+});
+
+test("generic coffee presentation fallback does not affect supplier eligibility", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  process.env.TAVILY_API_KEY = "test-key";
+  let discoveryCalls = 0;
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    if (!payload.include_domains && !payload.query?.startsWith('"')) {
+      discoveryCalls += 1;
+      return discoveryCalls === 1 ? tavily([{
+        title: "Coffee", url: "https://coffee.example/wholesale",
+        content: "Our company supplies whole bean coffee wholesale to B2B customers. Delivery to Ukraine.", score: 0.9,
+      }]) : tavily([]);
+    }
+    return tavily([]);
+  };
+  try {
+    const response = await invoke();
+    assert.equal(response.responseBody.results.length, 1);
+    assert.equal(response.responseBody.results[0].title, "coffee.example");
+    assert.equal(response.responseBody.results[0].supplierDomain, "coffee.example");
+    assert.equal(response.responseBody.results[0].delivery.status, "confirmed");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+  }
+});
