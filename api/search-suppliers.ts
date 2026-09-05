@@ -13,6 +13,7 @@ import {
 import { buildAdditionalMarketAwareDiscoveryQuery, buildComplementaryMarketAwareDiscoveryQuery, buildMarketAwareDiscoveryQuery } from "./market-discovery";
 import { asDiscoveryEvidence, evidenceProduct, resolveSupplierIdentities } from "./supplier-discovery";
 import { companyIdentityKey } from "./supplier-identity";
+import { resolveSupplierDisplayName } from "./supplier-display-name";
 import type { DiscoveryEvidence, ResolvedSupplier } from "./supplier-discovery";
 
 declare const process: {
@@ -384,6 +385,10 @@ export default async function handler(
     const ownKeys = new Set(candidate.equivalenceKeys);
     return promotionEvaluation.suppliers.find(group => overlaps(group.equivalenceKeys, ownKeys))?.equivalenceKeys ?? candidate.equivalenceKeys;
   };
+  const accumulatedSupplierFor = (candidate: ResolvedSupplier): ResolvedSupplier => {
+    const ownKeys = new Set(candidate.equivalenceKeys);
+    return promotionEvaluation.suppliers.find(group => overlaps(group.equivalenceKeys, ownKeys)) ?? candidate;
+  };
   for (const [index, candidate] of candidates.entries()) initiallyEnriched[index].equivalenceKeys = expandedKeysFor(candidate);
   const promotedCandidates = promotionEvaluation.suppliers
     .filter(candidate => !overlaps(candidate.equivalenceKeys, initialIdentityKeys))
@@ -405,6 +410,10 @@ export default async function handler(
   }
   const promotedEnriched = await Promise.all(promotedCandidates.map(candidate => enrichCandidate(candidate, false)));
   const enriched = [...initiallyEnriched, ...promotedEnriched];
+  for (const [index, candidate] of [...candidates, ...promotedCandidates].entries()) {
+    const accumulated = accumulatedSupplierFor(candidate);
+    enriched[index].result.title = resolveSupplierDisplayName(candidate.identity, accumulated.evidence);
+  }
   const ranked = rankAndFilterByDelivery(enriched.map(item => item.result)).filter(result => result.product === requestedProductValue);
   const enrichedByResult = new Map(enriched.map(item => [item.result, item]));
   const results = retainUniqueSupplierRows(ranked.map(result => enrichedByResult.get(result) ?? { result, equivalenceKeys: [] }));
