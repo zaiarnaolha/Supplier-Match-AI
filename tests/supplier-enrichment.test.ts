@@ -175,6 +175,23 @@ test("aggregates comparable structured prices across evidence and keeps public s
   assert.deepEqual(Object.keys(enriched).sort(), ["delivery", "moq", "price", "product", "supplierLocation"]);
 });
 
+test("deduplicates repeated literal-from facts despite compatible scope enrichment", () => {
+  const enriched = extractVerifiedEnrichment([
+    result("Whole bean coffee. Price від 535 грн/кг."),
+    result("Whole bean coffee. Wholesale price від 535 грн/кг."),
+  ], context);
+  assert.equal(enriched.price, "від 535 грн/кг");
+  assert.equal(priceCandidatesOf(enriched).length, 2, "provenance observations remain available internally");
+});
+
+test("does not arbitrarily select among incompatible semantic price groups", () => {
+  const enriched = extractVerifiedEnrichment([
+    result("Whole bean coffee. Wholesale price 600 грн/кг."),
+    result("Whole bean coffee. Wholesale price 868 грн/шт."),
+  ], context);
+  assert.equal(enriched.price, null, "one candidate in each basis gives no principled group preference");
+});
+
 test("merge retains structured observations and recomputes rather than discarding disagreement", () => {
   const first = extractVerifiedEnrichment([result("Whole bean coffee. Wholesale price 660 грн/кг.")], context);
   const second = extractVerifiedEnrichment([result("Whole bean coffee. Wholesale price 616 грн/кг.")], context);

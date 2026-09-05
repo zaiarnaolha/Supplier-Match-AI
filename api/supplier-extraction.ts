@@ -150,13 +150,13 @@ function scopeOf(evidence: string): PriceScope {
   return "unspecified";
 }
 
-function candidate(raw: string, evidence: string, evidenceType: PriceEvidenceType, product: NonNullable<ExtractedField>, url: string): PriceCandidate | null {
+function candidate(raw: string, evidence: string, evidenceType: PriceEvidenceType, product: NonNullable<ExtractedField>, url: string, semanticContext = evidence): PriceCandidate | null {
   const amount = decimalAmount(raw);
   const currency = currencyOf(raw);
   if (!amount || amount.coefficient === 0n || !currency) return null;
   return {
     displayValue: cleanPrice(raw), amount, currency, basis: basisOf(raw, evidence),
-    productBinding: product.value, commercialScope: scopeOf(evidence), sourceUrl: url,
+    productBinding: product.value, commercialScope: scopeOf(semanticContext), sourceUrl: url,
     evidenceType, evidence: evidence.trim(), sourceExpressedFrom: /^(?:від|from)\s+/iu.test(raw.trim()),
   };
 }
@@ -175,21 +175,54 @@ export function comparablePriceCandidates(candidates: PriceCandidate[]): boolean
     && item.productBinding === first.productBinding && item.commercialScope === first.commercialScope);
 }
 
-export function formatPriceCandidates(observations: PriceCandidate[]): ExtractedField {
-  const distinct = new Map<string, PriceCandidate>();
+function semanticCandidates(observations: PriceCandidate[]): PriceCandidate[] {
+  const facts = new Map<string, PriceCandidate[]>();
   for (const item of observations) {
-    const key = [decimalKey(item.amount), item.currency, item.basis ?? "", item.productBinding, item.commercialScope].join("|");
-    if (!distinct.has(key)) distinct.set(key, item);
+    const factKey = [decimalKey(item.amount), item.currency, item.basis ?? "", item.productBinding,
+      item.sourceExpressedFrom ? "from" : "exact"].join("|");
+    const values = facts.get(factKey) ?? [];
+    values.push(item);
+    facts.set(factKey, values);
   }
-  const candidates = [...distinct.values()];
-  if (candidates.length === 0 || !comparablePriceCandidates(candidates)) return null;
-  const lowest = candidates.reduce((best, item) => {
+
+  const distinct = new Map<string, PriceCandidate>();
+  for (const values of facts.values()) {
+    const explicitScopes = new Set(values.map(item => item.commercialScope).filter(scope => scope !== "unspecified"));
+    for (const observation of values) {
+      // An otherwise identical observation with no scope adds no conflicting
+      // fact when every explicit observation agrees on one scope.
+      const commercialScope = observation.commercialScope === "unspecified" && explicitScopes.size === 1
+        ? [...explicitScopes][0] : observation.commercialScope;
+      const item = commercialScope === observation.commercialScope ? observation : { ...observation, commercialScope };
+      const key = [decimalKey(item.amount), item.currency, item.basis ?? "", item.productBinding,
+        item.commercialScope, item.sourceExpressedFrom ? "from" : "exact"].join("|");
+      if (!distinct.has(key)) distinct.set(key, item);
+    }
+  }
+  return [...distinct.values()];
+}
+
+export function formatPriceCandidates(observations: PriceCandidate[]): ExtractedField {
+  const candidates = semanticCandidates(observations);
+  if (candidates.length === 0) return null;
+  const groups = new Map<string, PriceCandidate[]>();
+  for (const item of candidates) {
+    const key = [item.currency, item.basis ?? "", item.productBinding, item.commercialScope].join("|");
+    const group = groups.get(key) ?? [];
+    group.push(item);
+    groups.set(key, group);
+  }
+  // No requested basis/scope preference exists, so competing valid groups are
+  // equally plausible and selecting any one would be arbitrary.
+  if (groups.size !== 1) return null;
+  const comparable = [...groups.values()][0];
+  const lowest = comparable.reduce((best, item) => {
     const scale = Math.max(best.amount.scale, item.amount.scale);
     const left = best.amount.coefficient * 10n ** BigInt(scale - best.amount.scale);
     const right = item.amount.coefficient * 10n ** BigInt(scale - item.amount.scale);
     return right < left ? item : best;
   });
-  const computedFrom = candidates.length > 1;
+  const computedFrom = comparable.length > 1;
   const value = computedFrom && !lowest.sourceExpressedFrom ? `від ${lowest.displayValue}` : lowest.displayValue;
   return { value, evidence: lowest.evidence, confidence: "high" };
 }
@@ -206,16 +239,20 @@ export function extractPriceCandidates(title: string, content: string, product: 
     const nearby = text.slice(sentenceStart, sentenceEnd).trim();
     if (NON_PRODUCT_PAYMENT.test(nearby) || ORDER_VALUE.test(nearby) || EXPLICIT_OTHER_PRODUCT.test(nearby)) continue;
     const prices = [...nearby.matchAll(MONEY)];
-    for (const price of prices) {
-      if (!isZeroMoney(price[0])) { const item = candidate(price[0], nearby, "labelled", product, url); if (item) findings.push(item); }
+    for (const [index, price] of prices.entries()) {
+      const localStart = index === 0 ? 0 : (prices[index - 1].index ?? 0) + prices[index - 1][0].length;
+      const localEnd = index + 1 === prices.length ? nearby.length : prices[index + 1].index ?? nearby.length;
+      const localEvidence = nearby.slice(localStart, localEnd).replace(/^[\s,;:—-]+|[\s,;:—-]+$/gu, "");
+      if (!isZeroMoney(price[0])) { const item = candidate(price[0], localEvidence, "labelled", product, url, nearby); if (item) findings.push(item); }
     }
   }
   // Multiple otherwise-unbound exact values remain ambiguous. Explicitly scoped
   // wholesale/retail observations proceed to semantic comparison instead.
   const labelledEvidence = new Set(findings.filter(item => item.evidenceType === "labelled").map(item => item.evidence));
   const labelledValues = new Set(findings.filter(item => item.evidenceType === "labelled").map(item => decimalKey(item.amount)));
+  const labelledBases = new Set(findings.filter(item => item.evidenceType === "labelled").map(item => item.basis ?? ""));
   if (labelledEvidence.size > 1 && labelledValues.size > 1
-    && findings.every(item => item.commercialScope === "unspecified")) return [];
+    && labelledBases.size === 1 && findings.every(item => item.commercialScope === "unspecified")) return [];
   if (findings.length === 0 && product) {
     for (const sentence of text.split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
       if (NON_PRODUCT_PAYMENT.test(sentence) || ORDER_VALUE.test(sentence) || !extractProduct(sentence, "", url)) continue;

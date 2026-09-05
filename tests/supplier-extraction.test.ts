@@ -77,10 +77,13 @@ test("keeps exact, sourced-from, and computed-from price semantics distinct", ()
 test("deduplicates observations and refuses incompatible price groups", () => {
   const product = extractProduct("Whole bean coffee", "", url);
   assert.equal(extractPrice("Whole bean coffee", "Price 600 грн/кг. Price 600,00 UAH/kg.", product, url)?.value, "600 грн/кг");
+  assert.equal(extractPrice("Whole bean coffee", "Price від 535 грн/кг. Price від 535,00 UAH/kg.", product, url)?.value, "від 535 грн/кг");
   assert.equal(extractPrice("Whole bean coffee", "Price 600 UAH. Price 20 USD.", product, url), null);
   assert.equal(extractPrice("Whole bean coffee", "Price 600 грн/кг. Price 300 грн/шт.", product, url), null);
   assert.equal(extractPrice("Whole bean coffee", "Retail price 300 UAH. Wholesale price 600 UAH.", product, url), null);
   assert.equal(extractPrice("Whole bean coffee", "250 g package price 180 грн. 1000 g package price 600 грн.", product, url), null);
+  assert.equal(extractPriceCandidates("Whole bean coffee", "250 g package price 180 грн. 1000 g package price 600 грн.", product, url).length, 2);
+  assert.equal(extractPrice("Whole bean coffee", "Whole bean coffee A, 1 kg, wholesale price 700 UAH. Whole bean coffee B, 1 kg, wholesale price 650 UAH.", product, url)?.value, "від 650 UAH");
 });
 
 test("keeps unsafe monetary evidence out of structured candidates", () => {
