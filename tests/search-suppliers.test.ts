@@ -56,7 +56,7 @@ test("qualification happens before hostname dedupe and enrichment retains one ca
     assert.equal(response.responseBody.results.length, 1);
     assert.equal(response.responseBody.results[0].url, "https://exact-coffee.example/catalog/coffee");
     assert.deepEqual((response.responseBody.results[0].delivery as { status: string }).status, "confirmed");
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5, "one bounded fact-completion call fills missing informational facts");
     assert.match(calls[1].query ?? "", /different commercial intent/);
     assert.deepEqual(calls[3].include_domains, ["exact-coffee.example"]);
   } finally {
@@ -133,7 +133,7 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
   };
   try {
     const response = await invoke();
-    assert.equal(calls, 4, "diagnostics must not add calls beyond three bounded discovery passes");
+    assert.equal(calls, 5, "diagnostics must not add calls beyond the bounded fact-completion request");
     assert.equal("diagnostics" in response.responseBody, false);
     assert.equal(JSON.stringify(response.responseBody).includes("SUPPLIER_DIAGNOSTICS"), false);
     assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][PRIMARY]")));
@@ -141,7 +141,7 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
     assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][OFFICIAL]")));
     assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][FINAL]")));
     assert.ok(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][SUMMARY]")));
-    assert.equal(logs.some(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][EXTERNAL]")), false);
+    assert.equal(logs.filter(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][EXTERNAL]")).length, 1);
     assert.equal(logs.join("\n").includes("secret-test-key"), false);
     assert.equal(logs.join("\n").includes("x".repeat(1201)), false, "logged snippets must be truncated");
     const summaryLine = logs.find(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][SUMMARY]")) ?? "";
@@ -150,7 +150,7 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
     assert.match(summaryLine, /"combinedRawCount":3/);
     assert.match(summaryLine, /"additionalTriggerReason":"resolved unique suppliers 1 is below 8"/);
     assert.match(summaryLine, /"officialCalls":1/);
-    assert.match(summaryLine, /"externalCalls":0/);
+    assert.match(summaryLine, /"externalCalls":1/);
     assert.match(summaryLine, /"returnedCount":1/);
   } finally {
     globalThis.fetch = originalFetch;
@@ -278,7 +278,7 @@ test("a product page reaches identity resolution before supplier-specific produc
   };
   try {
     const response = await invoke();
-    assert.equal(calls, 4);
+    assert.equal(calls, 5, "confirmed delivery with missing facts performs one bounded fact-completion call");
     assert.equal(response.responseBody.results.length, 1);
     assert.equal(response.responseBody.results[0].title, "Exact Coffee");
     assert.equal(response.responseBody.results[0].product, "Кава в зернах");
@@ -374,7 +374,7 @@ test("RoyalLife reaches enrichment and remains eligible with actual MOQ 30 кг 
   try {
     const response = await invoke(buildSupplierSearchRequest(query));
     assert.equal(response.statusCode, 200);
-    assert.equal(calls, 4);
+    assert.equal(calls, 5, "missing price triggers one bounded fact-completion call");
     assert.equal(response.responseBody.results.length, 1);
     assert.equal(response.responseBody.results[0].moq, "від 30 кг");
     assert.notEqual(response.responseBody.results[0].moq, "20 кг");
@@ -558,7 +558,7 @@ test("KavaUA verified enrichment evidence cannot promote or return its existing 
   try {
     const response = await invoke();
     assert.equal(response.responseBody.results.filter(item => item.title === "KavaUA").length, 1);
-    assert.equal(calls, 4, "existing KavaUA evidence must not trigger promoted enrichment");
+    assert.equal(calls, 5, "fact completion must not trigger promoted enrichment");
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
