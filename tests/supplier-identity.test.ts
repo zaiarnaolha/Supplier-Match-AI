@@ -134,6 +134,27 @@ test("generic directory, category, classified, and Russian page titles do not be
   }
 });
 
+test("search and category pages cannot turn third-party B2B phrases into a host supplier", () => {
+  for (const [title, content, url] of [
+    ["Результати пошуку — кава", "Компанії Alpha та Beta. Офіційний дистриб'ютор кави оптом.", "https://local-catalog.example/search/coffee"],
+    ["Coffee companies by category", "Official distributor. Wholesale coffee suppliers and manufacturers.", "https://business-list.example/category/coffee"],
+  ]) {
+    assert.equal(classifySourceRole(title, content, url), "directory_classified");
+    assert.equal(identifySupplier(title, content, url), null);
+  }
+});
+
+test("a classified evidence host may identify only an explicitly named supplier, never itself", () => {
+  const identity = identifySupplier(
+    "Coffee directory search results",
+    "Компанія: Synthetic Roaster. Synthetic Roaster is a wholesale coffee supplier.",
+    "https://local-catalog.example/search/coffee",
+  );
+  assert.equal(identity?.name, "Synthetic Roaster");
+  assert.equal(identity?.domain, null);
+  assert.equal(identity?.sourceType, "directory");
+});
+
 test("directory evidence resolves an explicitly identified concrete company", () => {
   const evidence = asDiscoveryEvidence([{
     title: "Каталог постачальників кави",

@@ -22,6 +22,7 @@ const PRODUCT_TITLE = /(?:кава|coffee|чай|tea|купити|ціна|price
 const GENERIC_IDENTITY = /^(?:виробник|постачальник|дистриб['’]?ютор|продавець|seller|supplier|manufacturer|producer|distributor|wholesaler|catalog|каталог|category|категорія|store|shop|опт|гурт)$/iu;
 const COMMERCIAL_TITLE = /(?:купити|ціна|price|оптом|гуртом|wholesale|каталог|catalog|товар|product|кава|coffee|чай|tea)/iu;
 const GENERIC_PAGE = /(?:продукт(?:ы|и)\s+питания|напитки\s+в\s+городе|продам\s+[\p{L}\p{N}]|оголошення|объявлени\p{L}*|classified|дошка\s+оголошень|каталог\s+(?:компаній|товарів|постачальників)|directory|список\s+(?:компаній|постачальників)|товари\s+та\s+послуги)/iu;
+const SEARCH_OR_AGGREGATION_PAGE = /(?:результат\p{L}*\s+пошук\p{L}*|search\s+results?|business\s+(?:catalog(?:ue)?|directory)|каталог\s+(?:місцевих\s+)?(?:підприємств|бізнесів)|(?:компанії|companies)\s+(?:за\s+категорією|by\s+category))/iu;
 const EDITORIAL_PAGE = /(?:^|\W)(?:топ|top)\s*\d+|рейтинг|огляд|review|how\s+to|як\s+обрати/iu;
 const BUSINESS_PAGE = /(?:компанія|company|бренд|brand|виробник|manufacturer|постачальник|supplier|дистриб['’]?ютор|distributor|оптом|оптов\p{L}*|wholesale|b2b|horeca)/iu;
 
@@ -56,8 +57,8 @@ export function classifySourceRole(title: string, content: string, url: string):
   let pathname = "";
   try { pathname = new URL(url).pathname; } catch { return "unknown"; }
   if (sourceType === "marketplace") return "marketplace_listing";
-  if (sourceType === "directory" || GENERIC_PAGE.test(text)
-    || /\/(?:classifieds?|obyavleniya|oholoshennya)(?:\/|$)/iu.test(pathname)) {
+  if (sourceType === "directory" || GENERIC_PAGE.test(text) || SEARCH_OR_AGGREGATION_PAGE.test(text)
+    || /\/(?:classifieds?|obyavleniya|oholoshennya|search|search-results?|tags?|categories?)(?:\/|$)/iu.test(pathname)) {
     return "directory_classified";
   }
   if (sourceType === "article" || EDITORIAL_PAGE.test(title)
