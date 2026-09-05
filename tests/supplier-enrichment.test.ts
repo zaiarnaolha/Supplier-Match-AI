@@ -32,6 +32,17 @@ test("official evidence explicitly connecting shipping and region confirms deliv
   assert.equal(enriched.delivery.sourceType, "official");
 });
 
+test("Ukrainian nationwide delivery phrases confirm delivery", () => {
+  const ukrainianContext = { ...context, deliveryRegion: "Україна" };
+  for (const phrase of [
+    "Доставка в точки видачі Розетка по всій території України.",
+    "Компанія забезпечує доставку по Україні через Нову Пошту.",
+    "Доставляємо у всі регіони України.",
+  ]) {
+    assert.equal(extractVerifiedEnrichment([result(`Кава в зернах. ${phrase}`)], ukrainianContext).delivery.status, "confirmed");
+  }
+});
+
 test("a country mention without delivery context does not confirm delivery", () => {
   assert.equal(extractVerifiedEnrichment([result("Whole bean coffee roasted in Ukraine.")], context).delivery.status, "not_confirmed");
 });
@@ -161,7 +172,55 @@ test("supplier-specific marketplace evidence can provide product, delivery, MOQ,
   );
   assert.equal(calls, 1, "confirmed discovered evidence avoids an unnecessary external lookup");
   assert.equal(enriched.delivery.status, "confirmed");
+  assert.equal(enriched.delivery.sourceType, "marketplace");
+  assert.equal(enriched.delivery.confirmationMethod, "marketplace_explicit_delivery");
   assert.equal(enriched.moq, "50 кг");
   assert.equal(enriched.price, "900 грн/кг");
   assert.equal(enriched.supplierLocation, null);
+});
+
+test("supplier-specific marketplace evidence accepts unlabeled price and wholesale MOQ", () => {
+  const marketplaceContext = { supplierName: "Лідер Кава Україна", supplierHostname: "", deliveryRegion: "Україна", sourceType: "marketplace" as const };
+  const enriched = extractVerifiedEnrichment([result(
+    "Продавець: Лідер Кава Україна | Кава в зернах для бізнесу, опт від 1 кг, 753 ₴/кг. Доставка по Україні.",
+    { title: "Лідер Кава Україна", url: "https://rozetka.com.ua/ua/coffee-123/p1" },
+  )], marketplaceContext);
+  assert.equal(enriched.product, "Кава в зернах");
+  assert.equal(enriched.moq, "від 1 кг");
+  assert.equal(enriched.price, "753 ₴/кг");
+  assert.equal(enriched.delivery.status, "confirmed");
+});
+
+test("generic or mismatched marketplace prices are not supplier evidence", () => {
+  const marketplaceContext = { supplierName: "Лідер Кава Україна", supplierHostname: "", deliveryRegion: "Україна", sourceType: "marketplace" as const };
+  const generic = result("Категорія кави в зернах. Середня ціна 670 грн. Marketplace працює в Україні.", {
+    title: "Кава — каталог", url: "https://rozetka.com.ua/ua/coffee/c1",
+  });
+  const otherSeller = result("Продавець: Other Tea | Чай Assam 670 грн. Доставка по Україні.", {
+    title: "Other Tea", url: "https://rozetka.com.ua/ua/tea/p2",
+  });
+  const enriched = extractVerifiedEnrichment([generic, otherSeller], marketplaceContext);
+  assert.equal(enriched.price, null);
+  assert.equal(enriched.product, null);
+  assert.equal(enriched.delivery.status, "not_confirmed");
+});
+
+test("a concrete marketplace listing can confirm nationwide delivery network availability", () => {
+  const marketplaceContext = { supplierName: "Company A", supplierHostname: "", deliveryRegion: "Україна", sourceType: "marketplace" as const };
+  const listing = result(
+    "Продавець: Company A | Кава в зернах оптом. Доступна для замовлення з доставкою Розетка по всій території України.",
+    { title: "Company A coffee", url: "https://rozetka.com.ua/ua/company-a-coffee/p3" },
+  );
+  const enriched = extractVerifiedEnrichment([listing], marketplaceContext);
+  assert.equal(enriched.delivery.status, "confirmed");
+  assert.equal(enriched.delivery.sourceType, "marketplace");
+  assert.equal(enriched.delivery.confirmationMethod, "marketplace_delivery_network");
+});
+
+test("marketplace country presence without listing delivery remains unconfirmed", () => {
+  const marketplaceContext = { supplierName: "Company A", supplierHostname: "", deliveryRegion: "Україна", sourceType: "marketplace" as const };
+  const listing = result("Продавець: Company A | Кава в зернах оптом. Rozetka працює в Україні.", {
+    title: "Company A coffee", url: "https://rozetka.com.ua/ua/company-a-coffee/p3",
+  });
+  assert.equal(extractVerifiedEnrichment([listing], marketplaceContext).delivery.status, "not_confirmed");
 });

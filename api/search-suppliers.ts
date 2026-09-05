@@ -11,7 +11,7 @@ import {
   deriveSupplierSearchCriteria,
   type SupplierSearchCriteria,
 } from "../shared/supplier-search-criteria";
-import { buildMarketAwareDiscoveryQuery } from "./market-discovery";
+import { buildAdditionalMarketAwareDiscoveryQuery, buildMarketAwareDiscoveryQuery } from "./market-discovery";
 import { identifySupplier, supplierIdentityKey, type SupplierIdentity } from "./supplier-identity";
 
 declare const process: {
@@ -74,7 +74,7 @@ function diagnosticRawResult(result: TavilyResult, index?: number) {
   };
 }
 
-function diagnosticsLog(prefix: "PRIMARY" | "OFFICIAL" | "EXTERNAL" | "FINAL" | "SUMMARY", payload: unknown): void {
+function diagnosticsLog(prefix: "PRIMARY" | "ADDITIONAL" | "OFFICIAL" | "EXTERNAL" | "FINAL" | "SUMMARY", payload: unknown): void {
   console.log(`[SUPPLIER_DIAGNOSTICS][${prefix}]`, JSON.stringify(payload));
 }
 
@@ -200,9 +200,9 @@ export default async function handler(
   const requestedProduct = extractProduct(criteria.product ?? normalizedQuery, "", "");
   const searchQuery = buildMarketAwareDiscoveryQuery(criteria.product ?? normalizedQuery, normalizedDeliveryRegion);
 
-  let tavilyResults: TavilyResult[];
+  let primaryResults: TavilyResult[];
   try {
-    tavilyResults = await tavilySearch(apiKey, searchQuery, { maxResults: 5 });
+    primaryResults = await tavilySearch(apiKey, searchQuery, { maxResults: 5 });
   } catch {
     response.status(502).json({
       error: "Supplier search service is currently unavailable.",
@@ -210,17 +210,17 @@ export default async function handler(
     return;
   }
 
-  const candidateGroups = new Map<string, {
+  type CandidateGroup = {
     identity: SupplierIdentity;
     primary: TavilyResult;
     fields: ReturnType<typeof extractSupplierFields>;
     evidenceSources: TavilyResult[];
-  }>();
+  };
   const diagnosticsEnabled = process.env.SUPPLIER_SEARCH_DIAGNOSTICS === "true";
   const requestId = diagnosticsEnabled
     ? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
     : null;
-  const diagnosticResults: Array<{
+  type DiagnosticResult = {
     index: number;
     title: string;
     url: string;
@@ -232,58 +232,75 @@ export default async function handler(
     supplierName?: string | null;
     supplierDomain?: string | null;
     sourceType?: string | null;
+    marketplaceDomain?: string | null;
+    marketplaceSeller?: string | null;
+    productEvidence?: string | null;
     b2bEvidence?: string[];
-  }> = [];
-  let qualifiedResultCount = 0;
-  let productRelevantCount = 0;
-  const productRelevantCandidates: Array<{ title: string; url: string; hostname: string }> = [];
-
-  for (const [resultIndex, { title, url, content, score }] of tavilyResults.entries()) {
-    const identity = identifySupplier(title, content, url);
-    const qualification = qualifySupplierCandidate(title, content, url);
-
-    const fields = extractSupplierFields(title, content, url);
-    const productRelevant = Boolean(
-      identity && qualification.qualified
-      && fields.product
-      && requestedProduct
-      && fields.product.value === requestedProduct.value,
-    );
-    if (diagnosticsEnabled) {
-      diagnosticResults.push({
-        index: resultIndex,
-        title,
-        url,
-        hostname: hostnameKey(url),
-        accepted: qualification.qualified,
+  };
+  function evaluateDiscovery(results: TavilyResult[]) {
+    const candidateGroups = new Map<string, CandidateGroup>();
+    const evaluations: DiagnosticResult[] = [];
+    const productRelevantCandidates: Array<{ title: string; url: string; hostname: string }> = [];
+    let qualifiedCount = 0;
+    let productRelevantCount = 0;
+    for (const [resultIndex, { title, url, content, score }] of results.entries()) {
+      const identity = identifySupplier(title, content, url);
+      const qualification = qualifySupplierCandidate(title, content, url);
+      const fields = extractSupplierFields(title, content, url);
+      const productRelevant = Boolean(identity && qualification.qualified && fields.product && requestedProduct
+        && fields.product.value === requestedProduct.value);
+      evaluations.push({
+        index: resultIndex, title, url, hostname: hostnameKey(url), accepted: qualification.qualified,
         reason: qualification.qualified ? null : qualification.reason,
-        extractedProduct: fields.product?.value ?? null,
-        productRelevant,
-        supplierName: identity?.name ?? null,
-        supplierDomain: identity?.domain ?? null,
+        extractedProduct: fields.product?.value ?? null, productRelevant,
+        supplierName: identity?.name ?? null, supplierDomain: identity?.domain ?? null,
         sourceType: identity?.sourceType ?? null,
+        marketplaceDomain: identity?.sourceType === "marketplace" ? hostnameKey(url) : null,
+        marketplaceSeller: identity?.sourceType === "marketplace" ? identity.name : null,
+        productEvidence: fields.product?.evidence ?? null,
         b2bEvidence: qualification.qualified ? qualification.evidence : [],
       });
+      if (!identity || !qualification.qualified) continue;
+      qualifiedCount += 1;
+      if (!fields.product || !requestedProduct || fields.product.value !== requestedProduct.value) continue;
+      productRelevantCount += 1;
+      const hostname = identity.domain ?? hostnameKey(url);
+      productRelevantCandidates.push({ title: identity.name, url, hostname });
+      const key = supplierIdentityKey(identity);
+      const current = candidateGroups.get(key);
+      if (current) {
+        current.evidenceSources.push({ title, url, content, score });
+        if (score > current.primary.score) current.primary = { title, url, content, score };
+        // An official identity supersedes a title inferred from non-official evidence.
+        if (identity.sourceType === "official" && current.identity.sourceType !== "official") current.identity = identity;
+      } else {
+        candidateGroups.set(key, { identity, primary: { title, url, content, score }, fields, evidenceSources: [{ title, url, content, score }] });
+      }
     }
+    return { candidateGroups, evaluations, productRelevantCandidates, qualifiedCount, productRelevantCount };
+  }
 
-    if (!identity || !qualification.qualified) continue;
-    qualifiedResultCount += 1;
-    // Supplier identity alone is insufficient: the primary evidence must also name the requested product.
-    if (!fields.product || !requestedProduct || fields.product.value !== requestedProduct.value) continue;
-    productRelevantCount += 1;
-
-    const hostname = identity.domain ?? hostnameKey(url);
-    productRelevantCandidates.push({ title: identity.name, url, hostname });
-    const key = supplierIdentityKey(identity);
-    const current = candidateGroups.get(key);
-    if (current) {
-      current.evidenceSources.push({ title, url, content, score });
-      if (score > current.primary.score) current.primary = { title, url, content, score };
-    } else {
-      candidateGroups.set(key, { identity, primary: { title, url, content, score }, fields, evidenceSources: [{ title, url, content, score }] });
+  const primaryEvaluation = evaluateDiscovery(primaryResults);
+  const additionalTriggered = primaryEvaluation.candidateGroups.size < 5;
+  const additionalTriggerReason = additionalTriggered
+    ? `viable unique suppliers ${primaryEvaluation.candidateGroups.size} is below 5`
+    : null;
+  const additionalQuery = additionalTriggered
+    ? buildAdditionalMarketAwareDiscoveryQuery(criteria.product ?? normalizedQuery, normalizedDeliveryRegion)
+    : null;
+  let additionalResults: TavilyResult[] = [];
+  if (additionalQuery) {
+    try {
+      additionalResults = await tavilySearch(apiKey, additionalQuery, { maxResults: 5 });
+    } catch {
+      // The bounded supplemental attempt is best-effort; primary discovery remains usable.
+      additionalResults = [];
     }
   }
-  const candidates = [...candidateGroups.values()];
+  const tavilyResults = [...primaryResults, ...additionalResults];
+  // Re-run the complete qualification/relevance/identity pipeline over the combined evidence.
+  const combinedEvaluation = evaluateDiscovery(tavilyResults);
+  const candidates = [...combinedEvaluation.candidateGroups.values()];
 
   if (diagnosticsEnabled) {
     diagnosticsLog("PRIMARY", {
@@ -292,9 +309,20 @@ export default async function handler(
       criteria,
       deliveryRegion: normalizedDeliveryRegion,
       tavilyQuery: searchQuery,
-      rawResults: tavilyResults.map((result, index) => diagnosticRawResult(result, index)),
-      evaluations: diagnosticResults,
-      afterQualificationAndProductRelevance: productRelevantCandidates,
+      exactQuery: searchQuery,
+      rawResults: primaryResults.map((result, index) => diagnosticRawResult(result, index)),
+      evaluations: primaryEvaluation.evaluations,
+      afterQualificationAndProductRelevance: primaryEvaluation.productRelevantCandidates,
+      afterHostnameDedupe: [...primaryEvaluation.candidateGroups.values()].map(candidate => ({ title: candidate.identity.name, url: candidate.identity.officialUrl, hostname: candidate.identity.domain, evidenceCount: candidate.evidenceSources.length })),
+    });
+    diagnosticsLog("ADDITIONAL", {
+      requestId,
+      exactQuery: additionalQuery,
+      triggerReason: additionalTriggerReason,
+      rawResults: additionalResults.map((result, index) => diagnosticRawResult(result, index)),
+      combinedRawCount: tavilyResults.length,
+      evaluations: combinedEvaluation.evaluations,
+      afterQualificationAndProductRelevance: combinedEvaluation.productRelevantCandidates,
       afterHostnameDedupe: candidates.map(candidate => ({ title: candidate.identity.name, url: candidate.identity.officialUrl, hostname: candidate.identity.domain, evidenceCount: candidate.evidenceSources.length })),
     });
   }
@@ -387,9 +415,14 @@ export default async function handler(
     }
     diagnosticsLog("SUMMARY", {
       requestId,
-      primaryRawCount: tavilyResults.length,
-      qualifiedCount: qualifiedResultCount,
-      productRelevantCount,
+      primaryQuery: searchQuery,
+      additionalQuery,
+      additionalTriggerReason,
+      primaryRawCount: primaryResults.length,
+      additionalRawCount: additionalResults.length,
+      combinedRawCount: tavilyResults.length,
+      qualifiedCount: combinedEvaluation.qualifiedCount,
+      productRelevantCount: combinedEvaluation.productRelevantCount,
       dedupedCount: candidates.length,
       officialCalls,
       externalCalls,

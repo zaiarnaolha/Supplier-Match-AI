@@ -88,3 +88,37 @@ test("qualifies supplier-specific marketplace evidence with an explicit wholesal
     "https://prom.ua/p456.html",
   ).qualified, true);
 });
+
+test("accepts RoyalLife-style wholesale evidence for businesses", () => {
+  const result = qualifySupplierCandidate(
+    "Кава оптом RoyalLife",
+    "Кава в зернах оптом вигідно для бізнесів. Арабіка та робуста оптом.",
+    "https://royal-life.ua/kava-optom",
+  );
+  assert.equal(result.qualified, true);
+  if (result.qualified) assert.deepEqual(result.evidence.map(value => value.toLocaleLowerCase()), ["оптом", "для бізнесів"]);
+});
+
+test("still rejects a retail-only official product page", () => {
+  assert.equal(qualifySupplierCandidate(
+    "Кава в зернах — купити",
+    "Ціна 670 грн. Додати у кошик. Швидке оформлення замовлення.",
+    "https://retail.example/coffee",
+  ).qualified, false);
+});
+
+test("qualifies a concrete marketplace seller with product-specific B2B evidence", () => {
+  assert.equal(qualifySupplierCandidate(
+    "Свіжообсмажена кава в зернах Premium | Продавець: Company A",
+    "Кава для бізнесу, опт від 1 кг. Гуртова ціна 753 ₴/кг.",
+    "https://rozetka.com.ua/ua/company-a-coffee/p3",
+  ).qualified, true);
+});
+
+test("generic marketplace search or category evidence remains rejected", () => {
+  assert.equal(qualifySupplierCandidate(
+    "Кава оптом — каталог продавців",
+    "100 пропозицій від різних продавців. Порівняти ціни.",
+    "https://prom.ua/ua/coffee.html",
+  ).qualified, false);
+});

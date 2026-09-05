@@ -16,6 +16,17 @@ test("supports English and Ukrainian aliases from title or content", () => {
   assert.equal(extractProduct("Зернова кава", "", url)?.value, "Кава в зернах");
 });
 
+test("recognizes an unambiguous supplier coffee-wholesale page as the requested coffee category", () => {
+  const extracted = extractProduct(
+    "Кава оптом від українського виробника Royal Life",
+    "Цікавить кава, купити оптом яку пропонує постачальник Роял Лайф? Стабільні поставки для бізнесу.",
+    "https://royal-life.ua/kava-optom",
+  );
+  assert.equal(extracted?.value, "Кава в зернах");
+  assert.equal(extracted?.confidence, "medium");
+  assert.equal(extractProduct("Чай оптом", "До кави пропонуємо печиво.", url), null);
+});
+
 test("does not infer product from an unrelated page or URL alone", () => {
   assert.equal(extractProduct("Постачальник для HoReCa", "Широкий каталог", url), null);
 });
@@ -32,6 +43,7 @@ test("extracts and normalizes explicit minimum order quantities", () => {
   assert.equal(extractMoq(fixture.title, fixture.content)?.value, "від 20 кг");
   assert.equal(extractMoq("Coffee", "MOQ: 50 kg")?.value, "50 кг");
   assert.equal(extractMoq("Coffee", "Minimum order quantity 100 pcs")?.value, "100 шт");
+  assert.equal(extractMoq("Royal Life", "Мінімальний обсяг для отримання оптових умов у Royal Life починається від 30 кг.")?.value, "від 30 кг");
 });
 
 test("returns null for absent and ambiguous MOQ", () => {
@@ -50,6 +62,19 @@ test("extracts explicit product price with currency and unit", () => {
   const product = extractProduct(fixture.title, fixture.content, fixture.url);
   assert.equal(extractPrice(fixture.title, fixture.content, product, fixture.url)?.value, "320 грн/кг");
   assert.equal(extractPrice("Coffee beans", "Wholesale price $10/kg", product, url)?.value, "$10/kg");
+});
+
+test("extracts Ukrainian product-local prices without requiring a price label", () => {
+  for (const price of ["670 грн", "750,00 грн", "900,00 грн", "1 100,00 грн"]) {
+    const product = extractProduct("Кава в зернах", "", url);
+    assert.equal(extractPrice("Кава в зернах", `Кава в зернах TESORO ${price}`, product, url)?.value, price);
+  }
+});
+
+test("rejects an unlabeled delivery fee and a price tied to another product", () => {
+  const product = extractProduct("Кава в зернах", "", url);
+  assert.equal(extractPrice("Кава в зернах", "Доставка для кави в зернах 200 грн", product, url), null);
+  assert.equal(extractPrice("Кава в зернах", "Чай Assam 670 грн", product, url), null);
 });
 
 test("rejects non-product fees, discounts, and ambiguous prices", () => {
