@@ -70,6 +70,13 @@ function hostname(url: string): string {
   try { return new URL(url).hostname.toLocaleLowerCase().replace(/^www\./, ""); } catch { return ""; }
 }
 
+function establishedDomainMatches(resultUrl: string, supplierHostname: string): boolean {
+  if (!supplierHostname.trim()) return false;
+  const supplierDomain = canonicalSupplierDomain(supplierHostname);
+  const resultDomain = canonicalSupplierDomain(resultUrl);
+  return Boolean(supplierDomain && resultDomain && supplierDomain === resultDomain);
+}
+
 function regionPattern(region: string): RegExp | null {
   const normalized = region.trim();
   if (!normalized || /^(?:anywhere|будь-яка країна)$/iu.test(normalized)) return null;
@@ -85,7 +92,9 @@ function supplierIdentityPresent(result: EnrichmentSearchResult, supplierName: s
   const text = normalizeIdentity(textOf(result));
   const name = normalizeIdentity(supplierName);
   const domain = normalizeIdentity(supplierHostname);
-  return (name.length >= 4 && text.includes(name)) || (domain.length >= 4 && (text.includes(domain) || hostname(result.url) === domain));
+  return (name.length >= 4 && text.includes(name))
+    || (domain.length >= 4 && text.includes(domain))
+    || establishedDomainMatches(result.url, supplierHostname);
 }
 
 function marketplaceSellerIdentityPresent(result: EnrichmentSearchResult, supplierName: string): boolean {
@@ -103,7 +112,7 @@ function identityMatchKind(
   const name = normalizeIdentity(supplierName);
   const domain = normalizeIdentity(supplierHostname);
   if (name.length >= 4 && text.includes(name)) return "company_name";
-  if (domain.length >= 4 && (text.includes(domain) || hostname(result.url) === domain)) return "hostname";
+  if ((domain.length >= 4 && text.includes(domain)) || establishedDomainMatches(result.url, supplierHostname)) return "hostname";
   return "neither";
 }
 

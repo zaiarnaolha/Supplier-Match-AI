@@ -102,6 +102,60 @@ test("external supplier-specific evidence confirms delivery while generic lists 
   assert.equal(extractVerifiedEnrichment([generic], externalContext).delivery.status, "not_confirmed");
 });
 
+test("external evidence accepts only URLs on an established canonical supplier domain", () => {
+  const externalResult = (url: string) => result("Whole bean coffee. Price 600 грн/кг.", {
+    title: "Whole bean coffee",
+    url,
+  });
+  for (const [supplierHostname, evidenceUrl] of [
+    ["supplier.com", "https://supplier.com/coffee"],
+    ["supplier.com", "https://www.supplier.com/coffee"],
+    ["supplier.com", "https://shop.supplier.com/coffee"],
+    ["supplier.com.ua", "https://supplier.com.ua/coffee"],
+    ["supplier.com.ua", "https://www.supplier.com.ua/coffee"],
+    ["supplier.com.ua", "https://shop.supplier.com.ua/coffee"],
+  ]) {
+    const enriched = extractVerifiedEnrichment([externalResult(evidenceUrl)], {
+      supplierName: "Established Supplier",
+      supplierHostname,
+      deliveryRegion: "Ukraine",
+      sourceType: "external",
+    });
+    assert.equal(enriched.price, "600 грн/кг", `${evidenceUrl} should belong to ${supplierHostname}`);
+  }
+
+  for (const evidenceUrl of ["https://other-supplier.com/coffee", "https://supplier-shop.com/coffee"]) {
+    const enriched = extractVerifiedEnrichment([externalResult(evidenceUrl)], {
+      supplierName: "Established Supplier",
+      supplierHostname: "supplier.com",
+      deliveryRegion: "Ukraine",
+      sourceType: "external",
+    });
+    assert.equal(enriched.product, null, `${evidenceUrl} must not bind to supplier.com`);
+    assert.equal(enriched.price, null, `${evidenceUrl} must not contribute a price`);
+  }
+});
+
+test("external URL ownership requires an established domain while textual supplier-name matching remains valid", () => {
+  const externalContext = {
+    supplierName: "Named Supplier",
+    supplierHostname: "",
+    deliveryRegion: "Ukraine",
+    sourceType: "external" as const,
+  };
+  const urlOnly = result("Whole bean coffee. Price 600 грн/кг.", {
+    title: "Whole bean coffee",
+    url: "https://supplier.com/coffee",
+  });
+  assert.equal(extractVerifiedEnrichment([urlOnly], externalContext).price, null);
+
+  const nameBound = result("Named Supplier sells whole bean coffee. Price 600 грн/кг.", {
+    title: "Whole bean coffee",
+    url: "https://trusted-profile.example/coffee",
+  });
+  assert.equal(extractVerifiedEnrichment([nameBound], externalContext).price, "600 грн/кг");
+});
+
 test("MOQ and concrete price require explicit evidence on a product-relevant result", () => {
   const enriched = extractVerifiedEnrichment([result("Whole bean coffee. MOQ: 20 kg. Wholesale price 618 ₴/кг.")], context);
   assert.equal(enriched.product, "Кава в зернах");
@@ -212,6 +266,38 @@ test("confirmed delivery with missing price performs one targeted fact completio
   assert.equal(calls.length, 2);
   assert.match(calls[1], /price wholesale price product price$/);
   assert.doesNotMatch(calls[1], /MOQ minimum order/);
+  assert.equal(enriched.moq, "20 кг");
+  assert.equal(enriched.price, "620 грн/кг");
+  assert.equal(enriched.delivery.status, "confirmed");
+});
+
+test("fact completion accepts product evidence from the established domain's subdomain", async () => {
+  const calls: string[] = [];
+  let externalEvaluation: Record<string, unknown> | undefined;
+  const enriched = await enrichSupplier(
+    { title: "Established Supplier", url: "https://supplier.com", domain: "supplier.com" },
+    "coffee beans",
+    "Ukraine",
+    async query => {
+      calls.push(query);
+      if (calls.length === 1) {
+        return [result("Coffee beans. MOQ 20 kg. We deliver throughout Ukraine.", {
+          title: "Coffee beans",
+          url: "https://supplier.com/coffee",
+        })];
+      }
+      return [result("Coffee beans. Price 620 грн/кг.", {
+        title: "Coffee beans",
+        url: "https://shop.supplier.com/coffee",
+      })];
+    },
+    (stage, payload) => {
+      if (stage === "external") externalEvaluation = (payload.evaluations as Record<string, unknown>[])[0];
+    },
+  );
+  assert.equal(calls.length, 2);
+  assert.equal(externalEvaluation?.identityMatchedBy, "hostname");
+  assert.equal(externalEvaluation?.supplierIdentityMatched, true);
   assert.equal(enriched.moq, "20 кг");
   assert.equal(enriched.price, "620 грн/кг");
   assert.equal(enriched.delivery.status, "confirmed");
