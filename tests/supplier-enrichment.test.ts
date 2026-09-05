@@ -84,6 +84,25 @@ test("external supplier-specific evidence confirms delivery while generic lists 
   assert.equal(extractVerifiedEnrichment([generic], externalContext).delivery.status, "not_confirmed");
 });
 
+test("external evidence for another supplier cannot contaminate the candidate", () => {
+  const result = {
+    title: "Royal Life — кава оптом",
+    url: "https://royal-life.ua/coffee",
+    content: "Royal Life. Кава в зернах. MOQ 30 кг. Ціна 900 грн/кг. Доставка по Україні.",
+    score: 0.9,
+  };
+  const enriched = extractVerifiedEnrichment([result], {
+    supplierName: "Coffee Town",
+    supplierHostname: "coffee-town.example",
+    deliveryRegion: "Україна",
+    sourceType: "external",
+  });
+  assert.equal(enriched.product, null);
+  assert.equal(enriched.moq, null);
+  assert.equal(enriched.price, null);
+  assert.equal(enriched.delivery.status, "not_confirmed");
+});
+
 test("MOQ and concrete price require explicit evidence on a product-relevant result", () => {
   const enriched = extractVerifiedEnrichment([result("Whole bean coffee. MOQ: 20 kg. Wholesale price 618 ₴/кг.")], context);
   assert.equal(enriched.product, "Кава в зернах");

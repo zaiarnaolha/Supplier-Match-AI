@@ -57,3 +57,34 @@ test("official KavaUA identity supersedes a TESORO product-page title", () => {
     sourceType: "official",
   });
 });
+
+test("generic supplier words and generic page headings are not supplier display names", () => {
+  assert.equal(identifySupplier("виробник", "Кава в зернах оптом.", "https://supplier.example/coffee"), null);
+  const identity = identifySupplier(
+    "Зелена кава в зернах із Бразилії",
+    "Royal Life — постачальник кави для бізнесу.",
+    "https://royal-life.ua/green-coffee",
+  );
+  assert.equal(identity?.name, "Royal Life");
+});
+
+test("recovers official brand names from product and geography pages", () => {
+  assert.equal(identifySupplier(
+    "Кава для ресторанів Львова",
+    "!FEST Coffee Mission. Обсмажуємо каву для HoReCa.",
+    "https://festcoffeemission.com/lviv/coffee",
+  )?.name, "!FEST Coffee Mission");
+  assert.equal(identifySupplier(
+    "Кава оптом від українського виробника Royal Life",
+    "Royal Life постачає каву для бізнесу.",
+    "https://royal-life.ua/kava-optom",
+  )?.name, "Royal Life");
+});
+
+test("an ambiguous source with a labeled concrete company is preserved", () => {
+  assert.equal(identifySupplier(
+    "Продукты питания / напитки в городе Ужгород",
+    "Компанія: TREVI — постачальник кави для HoReCa.",
+    "https://all.biz/coffee-listing",
+  )?.name, "TREVI");
+});
