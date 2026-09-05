@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canonicalSupplierDomain, identifySupplier, supplierIdentityKey } from "../api/supplier-identity.ts";
+import { canonicalSupplierDomain, classifySourceRole, companyIdentityKey, identifySupplier, supplierIdentityKey } from "../api/supplier-identity.ts";
 import { asDiscoveryEvidence, resolveSupplierIdentities } from "../api/supplier-discovery.ts";
 
 test("supplier subdomains share one canonical identity", () => {
@@ -120,4 +120,47 @@ test("numeric domain fallback is not a strong display identity without brand evi
     "Компанія: 808 Coffee. Оптові поставки кави для HoReCa.",
     "https://808.com.ua/catalog/coffee",
   )?.name, "808 Coffee");
+});
+
+test("generic directory, category, classified, and Russian page titles do not become identities", () => {
+  const pages = [
+    ["Продукты питания / напитки в городе Ужгород", "Каталог товаров и услуг.", "https://abyhom.com/catalog/food"],
+    ["Продам ЗЕРНО гречки", "Доска объявлений. Оптовая продажа.", "https://bboard.com.ua/obyavleniya/123"],
+    ["APKUA", "Каталог компаній та товарів для агробізнесу.", "https://apkua.com/search/coffee"],
+  ] as const;
+  for (const [title, content, url] of pages) {
+    assert.equal(classifySourceRole(title, content, url), "directory_classified");
+    assert.equal(identifySupplier(title, content, url), null);
+  }
+});
+
+test("directory evidence resolves an explicitly identified concrete company", () => {
+  const evidence = asDiscoveryEvidence([{
+    title: "Каталог постачальників кави",
+    content: "Компанія: BUNO. BUNO — виробник кави в зернах оптом для HoReCa.",
+    url: "https://europages.com.ua/buno-coffee",
+    score: 0.8,
+  }], "primary");
+  const resolved = resolveSupplierIdentities(evidence);
+  assert.equal(resolved.suppliers.length, 1);
+  assert.equal(resolved.suppliers[0].identity.name, "BUNO");
+  assert.equal(resolved.suppliers[0].identity.sourceType, "directory");
+});
+
+test("exact verified company identity dedupes two official domains", () => {
+  const resolved = resolveSupplierIdentities(asDiscoveryEvidence([
+    { title: "Leader Coffee | Опт", content: "Компанія: Leader Coffee. Кава в зернах оптом для HoReCa.", url: "https://leadercoffee.ua/b2b", score: 0.9 },
+    { title: "Кава для бізнесу | Leader Coffee", content: "Компанія: Leader Coffee. Оптовий постачальник кави для HoReCa.", url: "https://leadercoffee.com.ua/wholesale", score: 0.8 },
+  ], "primary"));
+  assert.equal(resolved.suppliers.length, 1);
+  assert.equal(resolved.suppliers[0].evidence.length, 2);
+  assert.equal(resolved.resolutions[1].dedupeDecision, "merged_company");
+  assert.equal(resolved.resolutions[0].companyIdentityKey, "company:leadercoffee");
+});
+
+test("similar but non-identical company names do not dedupe", () => {
+  const first = identifySupplier("Leader Coffee", "Компанія: Leader Coffee. Кава оптом для HoReCa.", "https://leadercoffee.ua/b2b");
+  const second = identifySupplier("Leader Coffee Group", "Компанія: Leader Coffee Group. Кава оптом для HoReCa.", "https://leader-coffee-group.example/b2b");
+  assert.ok(first && second);
+  assert.notEqual(companyIdentityKey(first), companyIdentityKey(second));
 });

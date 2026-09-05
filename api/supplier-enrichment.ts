@@ -297,6 +297,7 @@ export async function enrichSupplier(
   search: EnrichmentSearch,
   diagnostics?: EnrichmentDiagnostics,
   requestedMaxMoq: string | null = null,
+  observeEvidence?: (results: EnrichmentSearchResult[]) => void,
 ): Promise<EnrichmentResult> {
   const supplierHostname = supplier.domain
     ? canonicalSupplierDomain(supplier.domain)
@@ -324,6 +325,7 @@ export async function enrichSupplier(
       officialQuery,
       { includeDomains: [supplierHostname], maxResults: 5 },
     );
+    observeEvidence?.(results);
     official = extractVerifiedEnrichment(results, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official" });
     diagnostics?.("official", {
       supplierTitle: supplier.title,
@@ -346,6 +348,7 @@ export async function enrichSupplier(
       externalQuery,
       { maxResults: 5 },
     );
+    observeEvidence?.(externalResults);
     const external = extractVerifiedEnrichment(externalResults, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external" });
     diagnostics?.("external", {
       supplierTitle: supplier.title,
