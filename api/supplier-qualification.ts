@@ -51,6 +51,7 @@ const BUSINESS_IDENTITY_SIGNALS: readonly RegExp[] = [
   /(?:наша\s+компанія|our\s+company|про\s+компанію|about\s+(?:us|the\s+company))/iu,
   /(?:контакти|contact\s+us|юридична\s+адреса|legal\s+address)/iu,
   /(?:магазин|shop|store)\s+[\p{L}\p{N}"“”'’ .-]{2,50}/iu,
+  /(?:продавець|seller|компанія|company)\s*[:—-]?\s*[\p{L}\p{N}"“”'’& .-]{2,50}/iu,
 ];
 
 const COMMERCIAL_ACTIVITY_SIGNALS: readonly RegExp[] = [
@@ -59,6 +60,13 @@ const COMMERCIAL_ACTIVITY_SIGNALS: readonly RegExp[] = [
   /(?:в\s+наявності|in\s+stock|додати\s+у\s+кошик|add\s+to\s+cart|артикул|sku)/iu,
   /(?:ціна|price)\s*[:—-]?\s*(?:від\s+)?(?:[$€₴]\s*)?\d/iu,
   /\d+(?:[.,]\d+)?\s*(?:грн|uah|usd|eur|₴|[$€])(?:\s*\/\s*\p{L}+)?/iu,
+];
+
+const B2B_SIGNALS: readonly RegExp[] = [
+  /(?:оптом|гуртом|оптов(?:ий|а|і|і ціни?)|wholesale|b2b)/iu,
+  /(?:moq|minimum\s+order|мінімальн(?:е\s+замовлення|а\s+партія))/iu,
+  /(?:дистриб['’]?ютор|distributors?|виробник|manufacturers?|постачальник|suppliers?)/iu,
+  /(?:horeca|business\s+customers?|для\s+(?:кав['’]?ярень|бізнесу|закладів))/iu,
 ];
 
 function firstMatchingEvidence(text: string, patterns: readonly RegExp[]): string | null {
@@ -99,38 +107,40 @@ export function qualifySupplierCandidate(
   const text = `${title}. ${content}`.replace(/\s+/g, " ").trim();
   const { hostname, pathname } = parseUrl(url);
 
+  const b2b = firstMatchingEvidence(text, B2B_SIGNALS);
+
   const editorialTitle = firstMatchingEvidence(title, EDITORIAL_TITLE_SIGNALS);
-  if (editorialTitle) {
+  if (editorialTitle && !b2b) {
     return { qualified: false, reason: `editorial title: ${editorialTitle}` };
   }
 
   const editorialUrl = firstMatchingEvidence(pathname, EDITORIAL_URL_SIGNALS);
-  if (editorialUrl) {
+  if (editorialUrl && !b2b) {
     return { qualified: false, reason: `editorial URL: ${editorialUrl}` };
   }
 
   const informational = firstMatchingEvidence(text, INFORMATIONAL_SIGNALS);
-  if (informational) {
+  if (informational && !b2b) {
     return { qualified: false, reason: `informational content: ${informational}` };
   }
 
   const aggregation = firstMatchingEvidence(text, AGGREGATION_SIGNALS);
-  if (aggregation || marketplaceAggregation(text, hostname, pathname)) {
+  if ((aggregation || marketplaceAggregation(text, hostname, pathname)) && !b2b) {
     return { qualified: false, reason: `aggregation page: ${aggregation ?? hostname}` };
   }
 
   const strongSupplier = firstMatchingEvidence(text, STRONG_SUPPLIER_SIGNALS);
-  if (strongSupplier) {
-    return { qualified: true, confidence: "high", evidence: [strongSupplier] };
+  if (strongSupplier && b2b) {
+    return { qualified: true, confidence: "high", evidence: [...new Set([strongSupplier, b2b])] };
   }
 
   const businessIdentity = firstMatchingEvidence(text, BUSINESS_IDENTITY_SIGNALS);
   const commercialActivity = firstMatchingEvidence(text, COMMERCIAL_ACTIVITY_SIGNALS);
-  if (businessIdentity && commercialActivity) {
+  if (businessIdentity && commercialActivity && b2b) {
     return {
       qualified: true,
       confidence: "medium",
-      evidence: [businessIdentity, commercialActivity],
+      evidence: [...new Set([businessIdentity, commercialActivity, b2b])],
     };
   }
 

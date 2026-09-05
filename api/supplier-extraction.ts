@@ -95,7 +95,10 @@ export function extractPrice(title: string, content: string, product: ExtractedF
   const findings: Array<{ value: string; evidence: string }> = [];
   for (const marker of text.matchAll(PRICE_MARKER)) {
     const markerIndex = marker.index ?? 0;
-    const nearby = text.slice(Math.max(0, markerIndex - 35), markerIndex + marker[0].length + 65);
+    const sentenceStart = Math.max(text.lastIndexOf(".", markerIndex - 1) + 1, 0);
+    const nextPeriod = text.indexOf(".", markerIndex);
+    const sentenceEnd = nextPeriod < 0 ? text.length : nextPeriod;
+    const nearby = text.slice(sentenceStart, sentenceEnd).trim();
     if (NON_PRODUCT_PAYMENT.test(nearby)) continue;
     const prices = [...nearby.matchAll(MONEY)];
     if (prices.length === 1) findings.push({ value: cleanPrice(prices[0][0]), evidence: nearby.trim() });

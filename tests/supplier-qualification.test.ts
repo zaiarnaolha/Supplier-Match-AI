@@ -72,3 +72,19 @@ test("editorial evidence vetoes supplier words in article content", () => {
     "https://example.com/articles/top-suppliers",
   ).qualified, false);
 });
+
+test("rejects a retail-only marketplace seller without B2B evidence", () => {
+  assert.equal(qualifySupplierCandidate(
+    "Кава в зернах | продавець Retail Coffee",
+    "Магазин Retail Coffee. В наявності. Додати у кошик.",
+    "https://prom.ua/p123.html",
+  ).qualified, false);
+});
+
+test("qualifies supplier-specific marketplace evidence with an explicit wholesale signal", () => {
+  assert.equal(qualifySupplierCandidate(
+    "Кава в зернах | продавець Gemini",
+    "Компанія Gemini. Кава гуртом для HoReCa. MOQ: 30 кг.",
+    "https://prom.ua/p456.html",
+  ).qualified, true);
+});

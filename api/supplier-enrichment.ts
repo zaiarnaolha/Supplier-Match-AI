@@ -1,4 +1,5 @@
 import { extractMoq, extractPrice, extractProduct, type ExtractedField } from "./supplier-extraction";
+import { canonicalSupplierDomain } from "./supplier-identity";
 
 export type DeliveryStatus = "confirmed" | "not_confirmed" | "not_available";
 export type EvidenceSource = "official" | "external";
@@ -133,8 +134,7 @@ function diagnosticEvaluation(
   const regionMatched = regionPattern(context.deliveryRegion)?.test(text) ?? false;
   const deliveryContextMatched = DELIVERY_WORD.test(text);
   const delivery = deliverySignal(result, context.deliveryRegion);
-  const officialDomainMatched = hostname(result.url) === context.supplierHostname
-    || hostname(result.url).endsWith(`.${context.supplierHostname}`);
+  const officialDomainMatched = canonicalSupplierDomain(hostname(result.url)) === canonicalSupplierDomain(context.supplierHostname);
   const identityMatched = identityMatchedBy !== "neither";
   const eligible = context.sourceType === "official"
     ? officialDomainMatched
@@ -173,7 +173,7 @@ export function extractVerifiedEnrichment(
   context: { supplierName: string; supplierHostname: string; deliveryRegion: string; sourceType: EvidenceSource },
 ): EnrichmentResult {
   const eligible = results.filter(result => context.sourceType === "official"
-    ? hostname(result.url) === context.supplierHostname || hostname(result.url).endsWith(`.${context.supplierHostname}`)
+    ? canonicalSupplierDomain(hostname(result.url)) === canonicalSupplierDomain(context.supplierHostname)
     : !GENERIC_EXTERNAL.test(textOf(result)) && supplierIdentityPresent(result, context.supplierName, context.supplierHostname));
   const productFields: SourcedField[] = [];
   const moqFields: SourcedField[] = [];
@@ -233,19 +233,30 @@ export function mergeEnrichment(primary: EnrichmentResult, secondary?: Enrichmen
 }
 
 export async function enrichSupplier(
-  supplier: { title: string; url: string },
+  supplier: { title: string; url: string; domain?: string | null; evidenceSources?: EnrichmentSearchResult[] },
   requestedProduct: string,
   deliveryRegion: string,
   search: EnrichmentSearch,
   diagnostics?: EnrichmentDiagnostics,
   requestedMaxMoq: string | null = null,
 ): Promise<EnrichmentResult> {
-  const supplierHostname = hostname(supplier.url);
+  const supplierHostname = canonicalSupplierDomain(supplier.domain ?? hostname(supplier.url));
   const empty = extractVerifiedEnrichment([], { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official" });
+  const discoveredSources = supplier.evidenceSources ?? [];
+  const discoveredOfficial = extractVerifiedEnrichment(discoveredSources.filter(source => supplierHostname
+    && canonicalSupplierDomain(source.url) === supplierHostname), {
+    supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official",
+  });
+  const discoveredExternal = extractVerifiedEnrichment(discoveredSources.filter(source => !supplierHostname
+    || canonicalSupplierDomain(source.url) !== supplierHostname), {
+    supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external",
+  });
+  const discoveredEvidence = mergeEnrichment(discoveredOfficial, discoveredExternal);
   let official = empty;
   const moqRequirement = requestedMaxMoq ? `buyer maximum MOQ ${requestedMaxMoq}` : "";
   const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price ${moqRequirement} delivery shipping ${deliveryRegion} company legal address`.replace(/\s+/g, " ").trim();
   try {
+    if (!supplierHostname) throw new Error("supplier official domain is unknown");
     const results = await search(
       officialQuery,
       { includeDomains: [supplierHostname], maxResults: 5 },
@@ -264,7 +275,8 @@ export async function enrichSupplier(
     diagnostics?.("official", { supplierTitle: supplier.title, hostname: supplierHostname, query: officialQuery, rawResults: [], evaluations: [], result: official, callFailed: true });
   }
 
-  if (official.delivery.status !== "not_confirmed") return official;
+  const collected = mergeEnrichment(discoveredEvidence, official);
+  if (collected.delivery.status !== "not_confirmed") return collected;
   const externalQuery = `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${moqRequirement} ${deliveryRegion} shipping delivery wholesale distributor`.replace(/\s+/g, " ").trim();
   try {
     const externalResults = await search(
@@ -281,10 +293,10 @@ export async function enrichSupplier(
       result: external,
       callFailed: false,
     });
-    return mergeEnrichment(official, external);
+    return mergeEnrichment(collected, external);
   } catch {
     diagnostics?.("external", { supplierTitle: supplier.title, hostname: supplierHostname, query: externalQuery, rawResults: [], evaluations: [], result: empty, callFailed: true });
-    return official;
+    return collected;
   }
 }
 
