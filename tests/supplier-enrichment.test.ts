@@ -57,13 +57,31 @@ test("same-domain office-paper delivery cannot confirm coffee delivery", () => {
   assert.equal(enriched.delivery.status, "not_confirmed");
 });
 
-test("a clearly catalogue-wide shipping policy can confirm delivery", () => {
+test("a catalogue-wide shipping policy alone cannot establish requested-product delivery", () => {
   const enriched = extractVerifiedEnrichment([result(
     "Shipping to Ukraine applies to all products and orders in our catalogue.",
     { title: "Shipping policy", url: "https://exact-coffee.example/shipping" },
   )], context);
   assert.equal(enriched.product, null);
-  assert.equal(enriched.delivery.status, "confirmed");
+  assert.equal(enriched.delivery.status, "not_confirmed");
+});
+
+test("supplier-wide delivery applies when the same owned evidence set establishes product membership", () => {
+  const catalogue = result("Whole bean coffee. Wholesale catalogue.");
+  const policy = result("Fast delivery throughout Ukraine and Europe.", {
+    title: "Company shipping policy", url: "https://exact-coffee.example/about/shipping",
+  });
+  assert.equal(extractVerifiedEnrichment([catalogue, policy], context).delivery.status, "confirmed");
+  assert.equal(extractVerifiedEnrichment([policy], context).delivery.status, "not_confirmed");
+});
+
+test("supplier-wide delivery remains subject to contradictory negative evidence", () => {
+  const enriched = extractVerifiedEnrichment([
+    result("Whole bean coffee. Wholesale catalogue."),
+    result("Fast delivery throughout Ukraine.", { title: "Shipping", url: "https://exact-coffee.example/shipping" }),
+    result("We do not ship all orders to Ukraine.", { title: "Restrictions", url: "https://exact-coffee.example/restrictions" }),
+  ], context);
+  assert.equal(enriched.delivery.status, "not_confirmed");
 });
 
 test("supplier location does not imply delivery and delivery region does not imply location", () => {
@@ -232,6 +250,35 @@ test("identity-bound product-relevant discovery evidence contributes MOQ and pri
   assert.equal(calls, 2);
   assert.equal(enriched.moq, "12 кг");
   assert.equal(enriched.price, "620 грн/кг");
+});
+
+test("supplier-owned discovery evidence reuses facts and fulfillment without rediscovery", async () => {
+  const discovery = result(
+    "Whole bean coffee for HoReCa. MOQ 5 kg. Wholesale price 890 грн. Fast delivery throughout Ukraine.",
+    { title: "Exact Coffee wholesale", url: "https://exact-coffee.example/catalog/coffee" },
+  );
+  let calls = 0;
+  const enriched = await enrichSupplier(
+    { title: "Exact Coffee", url: discovery.url, domain: "exact-coffee.example", evidenceSources: [discovery] },
+    "whole bean coffee", "Ukraine", async () => { calls += 1; return []; },
+  );
+  assert.equal(calls, 1, "reuse adds no recursive or fact-completion request when discovered facts are complete");
+  assert.equal(enriched.delivery.status, "confirmed");
+  assert.equal(enriched.moq, "5 кг");
+  assert.equal(enriched.price, "890 грн");
+});
+
+test("discovery evidence remains supplier-scoped", async () => {
+  const other = result("Other Company whole bean coffee. MOQ 5 kg. Wholesale price 890 грн. Fast delivery throughout Ukraine.", {
+    title: "Other Company wholesale", url: "https://other.example/coffee",
+  });
+  const enriched = await enrichSupplier(
+    { title: "Exact Coffee", url: "https://exact-coffee.example", domain: "exact-coffee.example", evidenceSources: [other] },
+    "whole bean coffee", "Ukraine", async () => [],
+  );
+  assert.equal(enriched.delivery.status, "not_confirmed");
+  assert.equal(enriched.price, null);
+  assert.equal(enriched.moq, null);
 });
 
 test("minimum order value is not extracted as product price", () => {
