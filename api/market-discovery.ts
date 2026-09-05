@@ -20,3 +20,17 @@ export function buildMarketAwareDiscoveryQuery(product: string, deliveryRegion: 
     "Discovery pages are sources only: identify the concrete seller/company and prefer its official website.",
   ].join(" ");
 }
+
+export function buildAdditionalMarketAwareDiscoveryQuery(product: string, deliveryRegion: string): string {
+  const market = MARKETS[deliveryRegion.trim().toLocaleLowerCase()];
+  const marketInstruction = market
+    ? `Use ${market.language} market terminology: ${market.commercialTerms}.`
+    : `Use the local commercial terminology used by buyers in ${deliveryRegion}.`;
+  return [
+    product,
+    marketInstruction,
+    `Find B2B catalogues, HoReCa partners, importers, and corporate supply offers that deliver to ${deliveryRegion}; supplier location may be any country.`,
+    "Use a different commercial intent from the primary search: focus on trade accounts, bulk purchasing, and minimum-order offers.",
+    "Return concrete manufacturers, distributors, wholesalers, or named sellers; discovery pages remain evidence sources only.",
+  ].join(" ");
+}

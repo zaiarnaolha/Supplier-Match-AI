@@ -52,6 +52,19 @@ test("extracts explicit product price with currency and unit", () => {
   assert.equal(extractPrice("Coffee beans", "Wholesale price $10/kg", product, url)?.value, "$10/kg");
 });
 
+test("extracts Ukrainian product-local prices without requiring a price label", () => {
+  for (const price of ["670 грн", "750,00 грн", "900,00 грн", "1 100,00 грн"]) {
+    const product = extractProduct("Кава в зернах", "", url);
+    assert.equal(extractPrice("Кава в зернах", `Кава в зернах TESORO ${price}`, product, url)?.value, price);
+  }
+});
+
+test("rejects an unlabeled delivery fee and a price tied to another product", () => {
+  const product = extractProduct("Кава в зернах", "", url);
+  assert.equal(extractPrice("Кава в зернах", "Доставка для кави в зернах 200 грн", product, url), null);
+  assert.equal(extractPrice("Кава в зернах", "Чай Assam 670 грн", product, url), null);
+});
+
 test("rejects non-product fees, discounts, and ambiguous prices", () => {
   const product = extractProduct("Кава в зернах", "", url);
   assert.equal(extractPrice("Кава", "Вартість доставки 200 грн", product, url), null);

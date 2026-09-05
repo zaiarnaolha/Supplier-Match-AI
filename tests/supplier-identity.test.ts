@@ -29,3 +29,16 @@ test("marketplace, directory, and article pages without a named seller are not s
   assert.equal(identifySupplier("Top suppliers", "A general guide.", "https://media.example/articles/top"), null);
   assert.equal(identifySupplier("Catalog", "Companies directory.", "https://europages.com/coffee"), null);
 });
+
+test("official KavaUA identity supersedes a TESORO product-page title", () => {
+  assert.deepEqual(identifySupplier(
+    "☕ Кава в зернах свіжого обсмаження TESORO",
+    "KavaUA — кава для бізнесу та HoReCa. Кава в зернах оптом.",
+    "https://kavaua.com.ua/product/tesoro",
+  ), {
+    name: "KavaUA",
+    domain: "kavaua.com.ua",
+    officialUrl: "https://kavaua.com.ua/product/tesoro",
+    sourceType: "official",
+  });
+});

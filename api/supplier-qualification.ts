@@ -66,8 +66,13 @@ const B2B_SIGNALS: readonly RegExp[] = [
   /(?:оптом|гуртом|оптов(?:ий|а|і|і ціни?)|wholesale|b2b)/iu,
   /(?:moq|minimum\s+order|мінімальн(?:е\s+замовлення|а\s+партія))/iu,
   /(?:дистриб['’]?ютор|distributors?|виробник|manufacturers?|постачальник|suppliers?)/iu,
-  /(?:horeca|business\s+customers?|для\s+(?:кав['’]?ярень|бізнесу|закладів))/iu,
+  /(?:horeca|business\s+customers?|для\s+(?:кав['’]?ярень|бізнес(?:у|ів)|закладів)|corporate\s+supply|корпоративн(?:і\s+поставки|е\s+постачання))/iu,
 ];
+
+function matchingEvidence(text: string, patterns: readonly RegExp[]): string[] {
+  return patterns.flatMap(pattern => text.match(pattern)?.[0] ?? []).filter((value, index, values) =>
+    values.findIndex(candidate => candidate.toLocaleLowerCase() === value.toLocaleLowerCase()) === index);
+}
 
 function firstMatchingEvidence(text: string, patterns: readonly RegExp[]): string | null {
   for (const pattern of patterns) {
@@ -142,6 +147,14 @@ export function qualifySupplierCandidate(
       confidence: "medium",
       evidence: [...new Set([businessIdentity, commercialActivity, b2b])],
     };
+  }
+
+  // Two independent, supplier-specific B2B claims are strong enough on a concrete
+  // commercial page, while a lone wholesale keyword remains insufficient.
+  const b2bEvidence = matchingEvidence(text, B2B_SIGNALS);
+  if (b2bEvidence.length >= 2 && !editorialTitle && !editorialUrl && !informational && !aggregation
+    && !marketplaceAggregation(text, hostname, pathname)) {
+    return { qualified: true, confidence: "high", evidence: b2bEvidence };
   }
 
   return { qualified: false, reason: "insufficient concrete supplier evidence" };

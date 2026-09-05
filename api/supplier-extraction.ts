@@ -103,6 +103,13 @@ export function extractPrice(title: string, content: string, product: ExtractedF
     const prices = [...nearby.matchAll(MONEY)];
     if (prices.length === 1) findings.push({ value: cleanPrice(prices[0][0]), evidence: nearby.trim() });
   }
+  if (findings.length === 0 && product) {
+    for (const sentence of text.split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
+      if (NON_PRODUCT_PAYMENT.test(sentence) || !extractProduct(sentence, "", url)) continue;
+      const prices = [...sentence.matchAll(MONEY)];
+      if (prices.length === 1) findings.push({ value: cleanPrice(prices[0][0]), evidence: sentence.trim() });
+    }
+  }
   let path = "/";
   try { path = new URL(url).pathname; } catch { /* Invalid URLs cannot establish product-page context. */ }
   if (findings.length === 0 && product && path !== "/") {

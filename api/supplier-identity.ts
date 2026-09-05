@@ -12,6 +12,7 @@ const DIRECTORY_HOSTS = ["all.biz", "europages.com", "kompass.com"];
 const PLATFORM_NAMES = /^(?:prom(?:\.ua)?|agrotorg|alibaba|amazon|etsy|all\.biz|europages|kompass)$/iu;
 const SELLER_LABEL = /(?:продавець|постачальник|компанія|виробник|seller|supplier|sold\s+by|company|manufacturer)\s*[:—-]\s*([\p{L}\p{N}][\p{L}\p{N}&'’"“” ._-]{1,70})/iu;
 const OFFICIAL_SITE = /(?:офіційний\s+сайт|сайт\s+(?:компанії|продавця)|official\s+(?:web)?site|company\s+(?:web)?site)\s*[:—-]?\s*(https?:\/\/[^\s,;)]+|(?:www\.)?[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s,;)]*)?)/iu;
+const PRODUCT_TITLE = /(?:кава|coffee|чай|tea|купити|ціна|price|catalog|каталог|товар|product)/iu;
 
 function host(url: string): string {
   try { return new URL(url).hostname.toLocaleLowerCase().replace(/^www\./, ""); } catch { return ""; }
@@ -59,7 +60,11 @@ export function identifySupplier(title: string, content: string, url: string): S
 
   const domain = canonicalSupplierDomain(url);
   const titleName = cleanName(title.replace(/\s*[|:]\s*.*/u, ""));
-  const name = titleName.length >= 2 ? titleName : domain.split(".")[0];
+  const domainLabel = domain.split(".")[0] ?? "";
+  const officialName = text.match(new RegExp(`(?:^|[^\\p{L}\\p{N}])(${domainLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?=$|[^\\p{L}\\p{N}])`, "iu"))?.[1];
+  const name = PRODUCT_TITLE.test(titleName) && officialName
+    ? cleanName(officialName)
+    : titleName.length >= 2 ? titleName : domainLabel;
   if (!domain || PLATFORM_NAMES.test(name)) return null;
   return { name, domain, officialUrl: url, sourceType };
 }

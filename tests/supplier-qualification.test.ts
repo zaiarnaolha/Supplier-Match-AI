@@ -88,3 +88,21 @@ test("qualifies supplier-specific marketplace evidence with an explicit wholesal
     "https://prom.ua/p456.html",
   ).qualified, true);
 });
+
+test("accepts RoyalLife-style wholesale evidence for businesses", () => {
+  const result = qualifySupplierCandidate(
+    "Кава оптом RoyalLife",
+    "Кава в зернах оптом вигідно для бізнесів. Арабіка та робуста оптом.",
+    "https://royal-life.ua/kava-optom",
+  );
+  assert.equal(result.qualified, true);
+  if (result.qualified) assert.deepEqual(result.evidence.map(value => value.toLocaleLowerCase()), ["оптом", "для бізнесів"]);
+});
+
+test("still rejects a retail-only official product page", () => {
+  assert.equal(qualifySupplierCandidate(
+    "Кава в зернах — купити",
+    "Ціна 670 грн. Додати у кошик. Швидке оформлення замовлення.",
+    "https://retail.example/coffee",
+  ).qualified, false);
+});
