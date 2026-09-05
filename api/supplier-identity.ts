@@ -129,9 +129,33 @@ export function supplierIdentityKey(identity: SupplierIdentity): string {
     : `name:${identity.name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "")}`;
 }
 
-export function companyIdentityKey(identity: SupplierIdentity): string {
+function normalizedIdentityName(value: string): string {
+  return value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+export function verifiedCompanyIdentityKey(identity: SupplierIdentity): string | null {
   const verifiedName = identity.confidence === "high" || identity.identitySource !== "official_domain";
-  const normalizedName = identity.name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-  if (verifiedName && normalizedName.length >= 3) return `company:${normalizedName}`;
-  return supplierIdentityKey(identity);
+  const normalizedName = normalizedIdentityName(identity.name);
+  return verifiedName && normalizedName.length >= 3 ? `company:${normalizedName}` : null;
+}
+
+/** Exact keys directly established by this identity; no similarity matching is used. */
+export function supplierIdentityKeys(identity: SupplierIdentity): string[] {
+  return [...new Set([supplierIdentityKey(identity), verifiedCompanyIdentityKey(identity)].filter((key): key is string => Boolean(key)))];
+}
+
+/**
+ * An official domain label may bridge to a verified company name only by exact
+ * normalized equality. The marker is not independently sufficient to merge two
+ * unverified domain identities.
+ */
+export function officialDomainCompanyBridgeKey(identity: SupplierIdentity): string | null {
+  if (identity.sourceType !== "official" || !identity.domain) return null;
+  const domainLabel = canonicalSupplierDomain(identity.domain).split(".")[0] ?? "";
+  const normalizedLabel = normalizedIdentityName(domainLabel);
+  return normalizedLabel.length >= 3 ? `company:${normalizedLabel}` : null;
+}
+
+export function companyIdentityKey(identity: SupplierIdentity): string {
+  return verifiedCompanyIdentityKey(identity) ?? supplierIdentityKey(identity);
 }

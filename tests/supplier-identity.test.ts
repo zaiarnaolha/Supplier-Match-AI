@@ -158,9 +158,39 @@ test("exact verified company identity dedupes two official domains", () => {
   assert.equal(resolved.resolutions[0].companyIdentityKey, "company:leadercoffee");
 });
 
+test("verified company evidence exactly bridges an asymmetric official domain identity", () => {
+  const resolved = resolveSupplierIdentities(asDiscoveryEvidence([
+    { title: "Leader Coffee", content: "Компанія: Leader Coffee. Кава оптом для HoReCa.", url: "https://leadercoffee.ua/b2b", score: 0.9 },
+    { title: "Кава в зернах оптом", content: "Оптовий постачальник кави для HoReCa.", url: "https://leadercoffee.com.ua/wholesale", score: 0.8 },
+  ], "primary"));
+  assert.equal(resolved.suppliers.length, 1);
+  assert.equal(resolved.suppliers[0].evidence.length, 2);
+  assert.ok(resolved.suppliers[0].equivalenceKeys.includes("company:leadercoffee"));
+  assert.ok(resolved.suppliers[0].equivalenceKeys.includes("domain:leadercoffee.com.ua"));
+});
+
+test("a later verified identity unifies previously separate exact domain-label groups regardless of order", () => {
+  const evidence = [
+    { title: "Кава оптом", content: "Постачальник кави оптом для HoReCa.", url: "https://leadercoffee.ua/b2b", score: 0.8 },
+    { title: "Кава гуртом", content: "Постачальник кави гуртом для бізнесу.", url: "https://leadercoffee.com.ua/wholesale", score: 0.7 },
+    { title: "Каталог", content: "Компанія: Leader Coffee. Постачальник кави оптом для HoReCa.", url: "https://directory.example/leader", score: 0.9 },
+  ];
+  for (const ordered of [evidence, [...evidence].reverse()]) {
+    const resolved = resolveSupplierIdentities(asDiscoveryEvidence(ordered, "primary"));
+    assert.equal(resolved.suppliers.length, 1);
+    assert.equal(resolved.suppliers[0].evidence.length, 3);
+  }
+});
+
 test("similar but non-identical company names do not dedupe", () => {
   const first = identifySupplier("Leader Coffee", "Компанія: Leader Coffee. Кава оптом для HoReCa.", "https://leadercoffee.ua/b2b");
   const second = identifySupplier("Leader Coffee Group", "Компанія: Leader Coffee Group. Кава оптом для HoReCa.", "https://leader-coffee-group.example/b2b");
   assert.ok(first && second);
   assert.notEqual(companyIdentityKey(first), companyIdentityKey(second));
+  const resolved = resolveSupplierIdentities(asDiscoveryEvidence([
+    { title: "Leader Coffee", content: "Компанія: Leader Coffee. Кава оптом для HoReCa.", url: "https://leadercoffee.ua/b2b", score: 0.9 },
+    { title: "Leader Coffee Group", content: "Компанія: Leader Coffee Group. Кава оптом для HoReCa.", url: "https://leader-coffee-group.example/b2b", score: 0.8 },
+  ], "primary"));
+  assert.equal(resolved.suppliers.length, 2);
+  assert.ok(resolved.resolutions.every(item => item.dedupeDecision === "new_company"));
 });
