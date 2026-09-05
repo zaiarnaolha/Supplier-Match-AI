@@ -97,6 +97,10 @@ export function extractMoq(title: string, content: string): ExtractedField {
 }
 
 function cleanPrice(raw: string): string { return raw.trim().replace(/\s+/g, " ").replace(/^from\s+/iu, "від "); }
+function isZeroMoney(raw: string): boolean {
+  const digits = raw.match(/\d/gu) ?? [];
+  return digits.length > 0 && digits.every(digit => digit === "0");
+}
 export function extractPrice(title: string, content: string, product: ExtractedField, url: string): ExtractedField {
   const text = `${title}. ${content}`.replace(/\s+/g, " ");
   const findings: Array<{ value: string; evidence: string }> = [];
@@ -108,20 +112,20 @@ export function extractPrice(title: string, content: string, product: ExtractedF
     const nearby = text.slice(sentenceStart, sentenceEnd).trim();
     if (NON_PRODUCT_PAYMENT.test(nearby) || ORDER_VALUE.test(nearby)) continue;
     const prices = [...nearby.matchAll(MONEY)];
-    if (prices.length === 1) findings.push({ value: cleanPrice(prices[0][0]), evidence: nearby.trim() });
+    if (prices.length === 1 && !isZeroMoney(prices[0][0])) findings.push({ value: cleanPrice(prices[0][0]), evidence: nearby.trim() });
   }
   if (findings.length === 0 && product) {
     for (const sentence of text.split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
       if (NON_PRODUCT_PAYMENT.test(sentence) || ORDER_VALUE.test(sentence) || !extractProduct(sentence, "", url)) continue;
       const prices = [...sentence.matchAll(MONEY)];
-      if (prices.length === 1) findings.push({ value: cleanPrice(prices[0][0]), evidence: sentence.trim() });
+      if (prices.length === 1 && !isZeroMoney(prices[0][0])) findings.push({ value: cleanPrice(prices[0][0]), evidence: sentence.trim() });
     }
   }
   let path = "/";
   try { path = new URL(url).pathname; } catch { /* Invalid URLs cannot establish product-page context. */ }
   if (findings.length === 0 && product && path !== "/") {
     const titlePrices = [...title.matchAll(MONEY)];
-    if (titlePrices.length === 1 && !NON_PRODUCT_PAYMENT.test(title) && !ORDER_VALUE.test(title)) findings.push({ value: cleanPrice(titlePrices[0][0]), evidence: title.trim() });
+    if (titlePrices.length === 1 && !isZeroMoney(titlePrices[0][0]) && !NON_PRODUCT_PAYMENT.test(title) && !ORDER_VALUE.test(title)) findings.push({ value: cleanPrice(titlePrices[0][0]), evidence: title.trim() });
   }
   const distinct = new Map(findings.map(item => [item.value.toLocaleLowerCase(), item]));
   if (distinct.size !== 1) return null;

@@ -133,6 +133,15 @@ test("minimum order value is not extracted as product price", () => {
   assert.equal(enriched.price, null);
 });
 
+test("zero product price remains missing without affecting confirmed supplier delivery", () => {
+  const enriched = extractVerifiedEnrichment([result(
+    "Whole bean coffee. Price 0,00 грн. We deliver throughout Ukraine.",
+  )], context);
+  assert.equal(enriched.product, "Кава в зернах");
+  assert.equal(enriched.price, null);
+  assert.equal(enriched.delivery.status, "confirmed");
+});
+
 test("package size is not MOQ and vague pricing is not a price", () => {
   const enriched = extractVerifiedEnrichment([result("Whole bean coffee in a 1 kg package. Low competitive prices.")], context);
   assert.equal(enriched.moq, null);

@@ -71,6 +71,17 @@ test("extracts Ukrainian product-local prices without requiring a price label", 
   }
 });
 
+test("rejects exactly zero monetary amounts without rejecting positive prices", () => {
+  const product = extractProduct("Кава в зернах", "", url);
+  for (const price of ["0 грн", "0,00 грн", "0.00 грн", "0 UAH", "0.00 UAH", "$0", "$0.00", "€0"]) {
+    assert.equal(extractPrice("Кава в зернах", `Ціна ${price}`, product, url), null, price);
+  }
+  for (const price of ["0,50 грн", "600 грн"]) {
+    assert.equal(extractPrice("Кава в зернах", `Ціна ${price}`, product, url)?.value, price);
+  }
+  assert.equal(extractPrice("Кава в зернах 295.00 UAH", "", product, url)?.value, "295.00 UAH");
+});
+
 test("rejects an unlabeled delivery fee and a price tied to another product", () => {
   const product = extractProduct("Кава в зернах", "", url);
   assert.equal(extractPrice("Кава в зернах", "Доставка для кави в зернах 200 грн", product, url), null);
