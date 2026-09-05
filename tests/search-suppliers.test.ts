@@ -77,9 +77,7 @@ test("official and external verification failures do not fail the whole supplier
   try {
     const response = await invoke();
     assert.equal(response.statusCode, 200);
-    assert.equal(response.responseBody.results.length, 1);
-    assert.equal((response.responseBody.results[0].delivery as { status: string }).status, "not_confirmed");
-    assert.equal(response.responseBody.results[0].moq, null);
+    assert.equal(response.responseBody.results.length, 0, "unconfirmed delivery must not reach the API response");
     assert.equal(calls, 3);
   } finally {
     globalThis.fetch = originalFetch;
@@ -177,18 +175,28 @@ test("control criteria reach backend and target both enrichment queries without 
       title: "Exact Coffee catalog", url: "https://exact-coffee.example/catalog",
       content: "Whole bean coffee for cafes.", score: 0.8,
     }]);
-    return tavily([]);
+    return tavily([{
+      title: "Exact Coffee delivery profile", url: "https://trusted-profile.example/exact-coffee",
+      content: "Exact Coffee (exact-coffee.example) supplies whole bean coffee and ships to Україна.", score: 0.7,
+    }]);
   };
   try {
     const response = await invoke(buildSupplierSearchRequest(query));
     assert.equal(response.statusCode, 200);
     assert.equal(calls.length, 3);
+    const expectedPrimaryQuery = "Кава в зернах Find actual suppliers, manufacturers, distributors, or wholesalers that sell or distribute the requested product. Prioritize official supplier or manufacturer websites, product catalog pages, and wholesale or B2B supplier pages. Exclude blog posts, news articles, guides, educational content, how to choose a supplier articles, and general informational pages.";
+    assert.equal(calls[0].query, expectedPrimaryQuery);
+    assert.match(calls[0].query ?? "", /^Кава в зернах /);
+    assert.doesNotMatch(calls[0].query ?? "", /Україна|delivery region|MOQ|20 кг/iu);
     assert.match(calls[1].query ?? "", /buyer maximum MOQ до 20 кг/);
     assert.match(calls[1].query ?? "", /delivery shipping Україна/);
     assert.match(calls[2].query ?? "", /до 20 кг Україна shipping delivery/);
+    assert.equal(calls[1].query, "Кава в зернах wholesale B2B catalog MOQ minimum order price buyer maximum MOQ до 20 кг delivery shipping Україна company legal address");
+    assert.equal(calls[2].query, "\"Exact Coffee — кава в зернах оптом\" \"exact-coffee.example\" Кава в зернах buyer maximum MOQ до 20 кг Україна shipping delivery wholesale distributor");
+    assert.equal(response.responseBody.results.length, 1);
     assert.equal(response.responseBody.results[0].moq, null, "requested MOQ must not become supplier MOQ");
     assert.equal(response.responseBody.results[0].supplierLocation, null, "delivery region must not become supplier location");
-    assert.equal((response.responseBody.results[0].delivery as { status: string }).status, "not_confirmed");
+    assert.equal((response.responseBody.results[0].delivery as { status: string }).status, "confirmed");
     const primaryLog = logs.find(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][PRIMARY]")) ?? "";
     assert.match(primaryLog, /"criteria":\{"product":"Кава в зернах","deliveryRegion":"Україна","maxMoq":\{"value":20/);
   } finally {

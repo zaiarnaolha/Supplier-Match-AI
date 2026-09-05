@@ -289,8 +289,7 @@ export async function enrichSupplier(
 }
 
 export function rankAndFilterByDelivery<T extends { delivery: DeliveryVerification; score: number }>(results: T[]): T[] {
-  return results.filter(result => result.delivery.status !== "not_available").sort((a, b) => {
-    const deliveryDifference = Number(b.delivery.status === "confirmed") - Number(a.delivery.status === "confirmed");
-    return deliveryDifference || b.score - a.score;
-  });
+  return results
+    .filter(result => result.delivery.status === "confirmed")
+    .sort((a, b) => b.score - a.score);
 }
