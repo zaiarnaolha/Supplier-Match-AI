@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { extractCountry, extractMoq, extractPrice, extractProduct, extractSupplierFields } from "../api/supplier-extraction.ts";
+import { extractCountry, extractMoq, extractPrice, extractPriceCandidates, extractProduct, extractSupplierFields } from "../api/supplier-extraction.ts";
 import { tavilySnippets } from "./fixtures/tavily-snippets.ts";
 
 const url = "https://supplier.example.com/catalog/coffee";
@@ -62,6 +62,33 @@ test("extracts explicit product price with currency and unit", () => {
   const product = extractProduct(fixture.title, fixture.content, fixture.url);
   assert.equal(extractPrice(fixture.title, fixture.content, product, fixture.url)?.value, "320 грн/кг");
   assert.equal(extractPrice("Coffee beans", "Wholesale price $10/kg", product, url)?.value, "$10/kg");
+});
+
+test("keeps exact, sourced-from, and computed-from price semantics distinct", () => {
+  const product = extractProduct("Whole bean coffee", "", url);
+  assert.equal(extractPrice("Whole bean coffee", "Price 600 грн", product, url)?.value, "600 грн");
+  const sourced = extractPriceCandidates("Whole bean coffee", "Price від 535 грн/кг", product, url);
+  assert.equal(extractPrice("Whole bean coffee", "Price від 535 грн/кг", product, url)?.value, "від 535 грн/кг");
+  assert.equal(sourced[0].sourceExpressedFrom, true);
+  assert.equal(extractPrice("Whole bean coffee", "Wholesale prices: 616 грн/кг, 660 грн/кг, 704 грн/кг, 792 грн/кг", product, url)?.value, "від 616 грн/кг");
+});
+
+test("deduplicates observations and refuses incompatible price groups", () => {
+  const product = extractProduct("Whole bean coffee", "", url);
+  assert.equal(extractPrice("Whole bean coffee", "Price 600 грн/кг. Price 600,00 UAH/kg.", product, url)?.value, "600 грн/кг");
+  assert.equal(extractPrice("Whole bean coffee", "Price 600 UAH. Price 20 USD.", product, url), null);
+  assert.equal(extractPrice("Whole bean coffee", "Price 600 грн/кг. Price 300 грн/шт.", product, url), null);
+  assert.equal(extractPrice("Whole bean coffee", "Retail price 300 UAH. Wholesale price 600 UAH.", product, url), null);
+  assert.equal(extractPrice("Whole bean coffee", "250 g package price 180 грн. 1000 g package price 600 грн.", product, url), null);
+});
+
+test("keeps unsafe monetary evidence out of structured candidates", () => {
+  const product = extractProduct("Whole bean coffee", "", url);
+  assert.equal(extractPrice("Whole bean coffee", "Price 0,00 грн. Coffee price 600 грн/кг.", product, url)?.value, "600 грн/кг");
+  assert.equal(extractPrice("Whole bean coffee", "Delivery price 100 грн. Coffee price 600 грн/кг.", product, url)?.value, "600 грн/кг");
+  assert.equal(extractPrice("Whole bean coffee", "Minimum order value 700 грн. Coffee price 620 грн/кг.", product, url)?.value, "620 грн/кг");
+  assert.equal(extractPrice("Whole bean coffee", "Tea price 200 грн. Coffee has flexible terms.", product, url), null);
+  assert.equal(extractPrice("Whole bean coffee", "Coffee options 500 грн and 600 грн.", product, url), null);
 });
 
 test("extracts Ukrainian product-local prices without requiring a price label", () => {

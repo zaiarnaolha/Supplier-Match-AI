@@ -1,5 +1,23 @@
 export type ExtractedField = { value: string; evidence: string; confidence: "high" | "medium" } | null;
 
+export type PriceCurrency = "UAH" | "USD" | "EUR";
+export type PriceScope = "wholesale" | "retail" | "unspecified";
+export type PriceEvidenceType = "labelled" | "product_local" | "product_title";
+
+/** Decimal money is stored as an integer coefficient and scale, never as a Number. */
+export interface PriceCandidate {
+  displayValue: string;
+  amount: { coefficient: bigint; scale: number };
+  currency: PriceCurrency;
+  basis: string | null;
+  productBinding: string;
+  commercialScope: PriceScope;
+  sourceUrl: string;
+  evidenceType: PriceEvidenceType;
+  evidence: string;
+  sourceExpressedFrom: boolean;
+}
+
 type CanonicalCategory = { canonical: string; aliases: readonly string[] };
 type CountryDefinition = { canonical: string; strongSignals: readonly RegExp[]; cities: readonly string[]; domains: readonly string[] };
 
@@ -27,6 +45,7 @@ const PRICE_MARKER = /(?:оптова\s+ціна|wholesale\s+price|ціна|pric
 const MONEY = /(?:від\s+|from\s+)?(?:(?:[$€]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?)?)|(?:\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?)?\s*(?:грн|₴|uah|usd|eur)))(?:\s*\/\s*(?:кг|kg|шт\.?|pcs?|л|l))?/giu;
 const NON_PRODUCT_PAYMENT = /(?:безкоштовн\p{L}*\s+достав|доставк\p{L}*|shipping|free\s+shipping|delivery|купон|coupon|membership|підписк|subscription|комісі|commission|депозит|deposit)/iu;
 const ORDER_VALUE = /(?:мінімальн\p{L}*\s+(?:вартість|сума)\s+замовлення|minimum\s+order\s+(?:value|amount)|order\s+minimum)/iu;
+const EXPLICIT_OTHER_PRODUCT = /(?:\btea\b|\bчай\b|офісн\p{L}*\s+папір|office\s+paper|detergent|мий(?:ний|ні)\s+засіб)/iu;
 const UNAMBIGUOUS_WHOLESALE_COFFEE = /(?:кава[^.!?]{0,55}(?:оптом|гуртом|оптов\p{L}*|постачальник|виробник|для\s+бізнес(?:у|ів)|horeca)|(?:оптом|гуртом|оптов\p{L}*|постачальник|виробник|horeca)[^.!?]{0,55}кава)/iu;
 
 function normalized(value: string): string { return value.toLocaleLowerCase().replace(/[’`]/g, "'").replace(/\s+/g, " ").trim(); }
@@ -101,35 +120,122 @@ function isZeroMoney(raw: string): boolean {
   const digits = raw.match(/\d/gu) ?? [];
   return digits.length > 0 && digits.every(digit => digit === "0");
 }
-export function extractPrice(title: string, content: string, product: ExtractedField, url: string): ExtractedField {
+function decimalAmount(raw: string): PriceCandidate["amount"] | null {
+  const numeric = raw.match(/\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?/u)?.[0];
+  if (!numeric) return null;
+  const compact = numeric.replace(/\s/g, "");
+  const separator = Math.max(compact.lastIndexOf("."), compact.lastIndexOf(","));
+  const decimalSeparator = separator >= 0 && compact.length - separator - 1 !== 3 ? separator : -1;
+  const whole = (decimalSeparator < 0 ? compact : compact.slice(0, decimalSeparator)).replace(/[.,]/g, "");
+  const fraction = decimalSeparator < 0 ? "" : compact.slice(decimalSeparator + 1);
+  return { coefficient: BigInt(`${whole}${fraction}`), scale: fraction.length };
+}
+
+function currencyOf(raw: string): PriceCurrency | null {
+  if (/\$|\busd\b/iu.test(raw)) return "USD";
+  if (/€|\beur\b/iu.test(raw)) return "EUR";
+  return /₴|грн|\buah\b/iu.test(raw) ? "UAH" : null;
+}
+
+function basisOf(raw: string, evidence: string): string | null {
+  const unit = raw.match(/\/\s*(кг|kg|шт\.?|pcs?|л|l)(?=$|[^\p{L}])/iu)?.[1]?.toLocaleLowerCase();
+  if (unit) return /^(?:кг|kg)$/u.test(unit) ? "per_kg" : /^(?:шт|pcs?\.?)$/u.test(unit) ? "per_item" : "per_litre";
+  const packageSize = evidence.match(/\b(\d+(?:[.,]\d+)?)\s*(кг|kg|г|g|гр|gram(?:s)?)\b/iu);
+  return packageSize ? `package:${packageSize[1].replace(",", ".")}${packageSize[2].toLocaleLowerCase()}` : null;
+}
+
+function scopeOf(evidence: string): PriceScope {
+  if (/(?:опт|гурт|wholesale|b2b|horeca)/iu.test(evidence)) return "wholesale";
+  if (/(?:роздріб|retail)/iu.test(evidence)) return "retail";
+  return "unspecified";
+}
+
+function candidate(raw: string, evidence: string, evidenceType: PriceEvidenceType, product: NonNullable<ExtractedField>, url: string): PriceCandidate | null {
+  const amount = decimalAmount(raw);
+  const currency = currencyOf(raw);
+  if (!amount || amount.coefficient === 0n || !currency) return null;
+  return {
+    displayValue: cleanPrice(raw), amount, currency, basis: basisOf(raw, evidence),
+    productBinding: product.value, commercialScope: scopeOf(evidence), sourceUrl: url,
+    evidenceType, evidence: evidence.trim(), sourceExpressedFrom: /^(?:від|from)\s+/iu.test(raw.trim()),
+  };
+}
+
+function decimalKey(amount: PriceCandidate["amount"]): string {
+  let coefficient = amount.coefficient;
+  let scale = amount.scale;
+  while (scale > 0 && coefficient % 10n === 0n) { coefficient /= 10n; scale -= 1; }
+  return `${coefficient}:${scale}`;
+}
+
+export function comparablePriceCandidates(candidates: PriceCandidate[]): boolean {
+  if (candidates.length < 2) return true;
+  const first = candidates[0];
+  return candidates.every(item => item.currency === first.currency && item.basis === first.basis
+    && item.productBinding === first.productBinding && item.commercialScope === first.commercialScope);
+}
+
+export function formatPriceCandidates(observations: PriceCandidate[]): ExtractedField {
+  const distinct = new Map<string, PriceCandidate>();
+  for (const item of observations) {
+    const key = [decimalKey(item.amount), item.currency, item.basis ?? "", item.productBinding, item.commercialScope].join("|");
+    if (!distinct.has(key)) distinct.set(key, item);
+  }
+  const candidates = [...distinct.values()];
+  if (candidates.length === 0 || !comparablePriceCandidates(candidates)) return null;
+  const lowest = candidates.reduce((best, item) => {
+    const scale = Math.max(best.amount.scale, item.amount.scale);
+    const left = best.amount.coefficient * 10n ** BigInt(scale - best.amount.scale);
+    const right = item.amount.coefficient * 10n ** BigInt(scale - item.amount.scale);
+    return right < left ? item : best;
+  });
+  const computedFrom = candidates.length > 1;
+  const value = computedFrom && !lowest.sourceExpressedFrom ? `від ${lowest.displayValue}` : lowest.displayValue;
+  return { value, evidence: lowest.evidence, confidence: "high" };
+}
+
+export function extractPriceCandidates(title: string, content: string, product: ExtractedField, url: string): PriceCandidate[] {
+  if (!product) return [];
   const text = `${title}. ${content}`.replace(/\s+/g, " ");
-  const findings: Array<{ value: string; evidence: string }> = [];
+  const findings: PriceCandidate[] = [];
   for (const marker of text.matchAll(PRICE_MARKER)) {
     const markerIndex = marker.index ?? 0;
     const sentenceStart = Math.max(text.lastIndexOf(".", markerIndex - 1) + 1, 0);
     const nextPeriod = text.indexOf(".", markerIndex);
     const sentenceEnd = nextPeriod < 0 ? text.length : nextPeriod;
     const nearby = text.slice(sentenceStart, sentenceEnd).trim();
-    if (NON_PRODUCT_PAYMENT.test(nearby) || ORDER_VALUE.test(nearby)) continue;
+    if (NON_PRODUCT_PAYMENT.test(nearby) || ORDER_VALUE.test(nearby) || EXPLICIT_OTHER_PRODUCT.test(nearby)) continue;
     const prices = [...nearby.matchAll(MONEY)];
-    if (prices.length === 1 && !isZeroMoney(prices[0][0])) findings.push({ value: cleanPrice(prices[0][0]), evidence: nearby.trim() });
+    for (const price of prices) {
+      if (!isZeroMoney(price[0])) { const item = candidate(price[0], nearby, "labelled", product, url); if (item) findings.push(item); }
+    }
   }
+  // Distinct values in separately labelled snippets may describe unrelated SKUs.
+  // A source may aggregate them only when it presents the values together as one bound list;
+  // enrichment can still combine independently validated single-price results later.
+  const labelledEvidence = new Set(findings.filter(item => item.evidenceType === "labelled").map(item => item.evidence));
+  const labelledValues = new Set(findings.filter(item => item.evidenceType === "labelled").map(item => decimalKey(item.amount)));
+  if (labelledEvidence.size > 1 && labelledValues.size > 1) return [];
   if (findings.length === 0 && product) {
     for (const sentence of text.split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
       if (NON_PRODUCT_PAYMENT.test(sentence) || ORDER_VALUE.test(sentence) || !extractProduct(sentence, "", url)) continue;
       const prices = [...sentence.matchAll(MONEY)];
-      if (prices.length === 1 && !isZeroMoney(prices[0][0])) findings.push({ value: cleanPrice(prices[0][0]), evidence: sentence.trim() });
+      if (prices.length === 1 && !isZeroMoney(prices[0][0])) { const item = candidate(prices[0][0], sentence, "product_local", product, url); if (item) findings.push(item); }
     }
   }
   let path = "/";
   try { path = new URL(url).pathname; } catch { /* Invalid URLs cannot establish product-page context. */ }
   if (findings.length === 0 && product && path !== "/") {
     const titlePrices = [...title.matchAll(MONEY)];
-    if (titlePrices.length === 1 && !isZeroMoney(titlePrices[0][0]) && !NON_PRODUCT_PAYMENT.test(title) && !ORDER_VALUE.test(title)) findings.push({ value: cleanPrice(titlePrices[0][0]), evidence: title.trim() });
+    if (titlePrices.length === 1 && !isZeroMoney(titlePrices[0][0]) && !NON_PRODUCT_PAYMENT.test(title) && !ORDER_VALUE.test(title)) {
+      const item = candidate(titlePrices[0][0], title, "product_title", product, url); if (item) findings.push(item);
+    }
   }
-  const distinct = new Map(findings.map(item => [item.value.toLocaleLowerCase(), item]));
-  if (distinct.size !== 1) return null;
-  return { ...[...distinct.values()][0], confidence: "high" };
+  return findings;
+}
+
+export function extractPrice(title: string, content: string, product: ExtractedField, url: string): ExtractedField {
+  return formatPriceCandidates(extractPriceCandidates(title, content, product, url));
 }
 
 export function extractSupplierFields(title: string, content: string, url: string) {

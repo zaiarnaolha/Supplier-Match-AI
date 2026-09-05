@@ -1,4 +1,4 @@
-import { extractMoq, extractPrice, extractProduct, type ExtractedField } from "./supplier-extraction";
+import { extractMoq, extractPriceCandidates, extractProduct, formatPriceCandidates, type ExtractedField, type PriceCandidate } from "./supplier-extraction";
 import { canonicalSupplierDomain, identifySupplier, sourceTypeForUrl } from "./supplier-identity";
 
 export type DeliveryStatus = "confirmed" | "not_confirmed" | "not_available";
@@ -39,6 +39,17 @@ export type EnrichmentDiagnostics = (
 ) => void;
 
 type SourcedField = ExtractedField & { sourceUrl?: string; sourceType?: EvidenceSource };
+const structuredPrices = new WeakMap<EnrichmentResult, PriceCandidate[]>();
+
+function withStructuredPrices(result: EnrichmentResult, candidates: PriceCandidate[]): EnrichmentResult {
+  structuredPrices.set(result, candidates);
+  return result;
+}
+
+/** Internal diagnostic/testing accessor; candidates are deliberately absent from the public JSON shape. */
+export function priceCandidatesOf(result: EnrichmentResult): readonly PriceCandidate[] {
+  return structuredPrices.get(result) ?? [];
+}
 
 const GENERIC_EXTERNAL = /(?:top|топ|rating|рейтинг|best|кращі|list of|список|directory|каталог)\s*(?:\d+\s*)?(?:coffee\s*)?(?:suppliers?|manufacturers?|постачальник\p{L}*|виробник\p{L}*)/iu;
 const DELIVERY_WORD = /(?:deliver(?:y|ies|ed|ing)?|ship(?:ping|s|ped)?|supply|достав(?:ка|ляємо|ляє|ляють|ити|ки|ку)|постав(?:ка|ляємо|ляє|ляють|ки|ку))/iu;
@@ -167,7 +178,7 @@ function diagnosticEvaluation(
   const genericRejected = GENERIC_EXTERNAL.test(text);
   const product = productEvidence(result);
   const moq = product ? extractMoq(result.title, result.content) : null;
-  const price = product ? extractPrice(result.title, result.content, product, result.url) : null;
+  const price = product ? formatPriceCandidates(extractPriceCandidates(result.title, result.content, product, result.url)) : null;
   const location = explicitLocation(result);
   const regionMatched = regionPattern(context.deliveryRegion)?.test(text) ?? false;
   const deliveryContextMatched = DELIVERY_WORD.test(text);
@@ -236,7 +247,7 @@ export function extractVerifiedEnrichment(
       : !GENERIC_EXTERNAL.test(textOf(result)) && supplierIdentityPresent(result, context.supplierName, context.supplierHostname));
   const productFields: SourcedField[] = [];
   const moqFields: SourcedField[] = [];
-  const priceFields: SourcedField[] = [];
+  const priceCandidates: PriceCandidate[] = [];
   const locationFields: SourcedField[] = [];
   const deliverySignals: Array<{ negative: boolean; evidence: string; url: string; method: "explicit" | "network" }> = [];
 
@@ -246,9 +257,9 @@ export function extractVerifiedEnrichment(
     // MOQ and price require product evidence in this exact result, avoiding values for another product.
     if (product) {
       const moq = extractMoq(result.title, result.content);
-      const price = extractPrice(result.title, result.content, product, result.url);
+      const candidates = extractPriceCandidates(result.title, result.content, product, result.url);
       if (moq) moqFields.push({ ...moq, sourceUrl: result.url, sourceType: context.sourceType });
-      if (price) priceFields.push({ ...price, sourceUrl: result.url, sourceType: context.sourceType });
+      priceCandidates.push(...candidates);
     }
     const location = explicitLocation(result);
     if (location) locationFields.push({ ...location, sourceType: context.sourceType });
@@ -265,10 +276,11 @@ export function extractVerifiedEnrichment(
   const decisive = hasPositive !== hasNegative ? deliverySignals.find(signal => signal.negative === hasNegative) : undefined;
   const status: DeliveryStatus = hasPositive && !hasNegative ? "confirmed"
     : hasNegative && !hasPositive ? "not_available" : "not_confirmed";
-  return {
+  const price = formatPriceCandidates(priceCandidates);
+  return withStructuredPrices({
     product: oneValue(productFields)?.value ?? null,
     moq: oneValue(moqFields)?.value ?? null,
-    price: oneValue(priceFields)?.value ?? null,
+    price: price?.value ?? null,
     supplierLocation: oneValue(locationFields)?.value ?? null,
     delivery: {
       region: context.deliveryRegion,
@@ -281,7 +293,7 @@ export function extractVerifiedEnrichment(
           : context.sourceType
       } : {}),
     },
-  };
+  }, priceCandidates);
 }
 
 export function mergeEnrichment(primary: EnrichmentResult, secondary?: EnrichmentResult): EnrichmentResult {
@@ -290,13 +302,15 @@ export function mergeEnrichment(primary: EnrichmentResult, secondary?: Enrichmen
   const delivery = statuses.size > 1
     ? { region: primary.delivery.region, status: "not_confirmed" as const, evidence: null, sourceUrl: null, sourceType: null }
     : primary.delivery.status !== "not_confirmed" ? primary.delivery : secondary.delivery;
-  return {
+  const candidates = [...priceCandidatesOf(primary), ...priceCandidatesOf(secondary)];
+  const structuredPrice = formatPriceCandidates(candidates);
+  return withStructuredPrices({
     product: primary.product ?? secondary.product,
     moq: primary.moq ?? secondary.moq,
-    price: primary.price ?? secondary.price,
+    price: candidates.length > 0 ? structuredPrice?.value ?? null : primary.price ?? secondary.price,
     supplierLocation: primary.supplierLocation ?? secondary.supplierLocation,
     delivery,
-  };
+  }, candidates);
 }
 
 export async function enrichSupplier(

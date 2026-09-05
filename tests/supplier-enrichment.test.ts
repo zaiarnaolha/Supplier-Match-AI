@@ -4,6 +4,7 @@ import {
   enrichSupplier,
   extractVerifiedEnrichment,
   mergeEnrichment,
+  priceCandidatesOf,
   rankAndFilterByDelivery,
   type EnrichmentSearchResult,
 } from "../api/supplier-enrichment.ts";
@@ -161,6 +162,28 @@ test("MOQ and concrete price require explicit evidence on a product-relevant res
   assert.equal(enriched.product, "Кава в зернах");
   assert.equal(enriched.moq, "20 кг");
   assert.equal(enriched.price, "618 ₴/кг");
+});
+
+test("aggregates comparable structured prices across evidence and keeps public shape unchanged", () => {
+  const enriched = extractVerifiedEnrichment([
+    result("Whole bean coffee. Wholesale price 704 грн/кг."),
+    result("Whole bean coffee. Wholesale price 616 грн/кг."),
+    result("Whole bean coffee. Wholesale price 660 грн/кг."),
+  ], context);
+  assert.equal(enriched.price, "від 616 грн/кг");
+  assert.equal(priceCandidatesOf(enriched).length, 3);
+  assert.deepEqual(Object.keys(enriched).sort(), ["delivery", "moq", "price", "product", "supplierLocation"]);
+});
+
+test("merge retains structured observations and recomputes rather than discarding disagreement", () => {
+  const first = extractVerifiedEnrichment([result("Whole bean coffee. Wholesale price 660 грн/кг.")], context);
+  const second = extractVerifiedEnrichment([result("Whole bean coffee. Wholesale price 616 грн/кг.")], context);
+  const merged = mergeEnrichment(first, second);
+  assert.equal(merged.price, "від 616 грн/кг");
+  assert.equal(priceCandidatesOf(merged).length, 2);
+
+  const incompatible = extractVerifiedEnrichment([result("Whole bean coffee. Wholesale price 20 USD/kg.")], context);
+  assert.equal(mergeEnrichment(first, incompatible).price, null);
 });
 
 test("identity-bound product-relevant discovery evidence contributes MOQ and price", async () => {
