@@ -165,14 +165,78 @@ test("official unknown delivery triggers one external search which can confirm i
   assert.equal(enriched.delivery.status, "confirmed");
 });
 
-test("confirmed official delivery avoids an external request", async () => {
+test("confirmed official delivery with complete informational facts avoids fact completion", async () => {
+  const calls: string[] = [];
+  const enriched = await enrichSupplier({ title: "Exact Coffee", url: "https://exact-coffee.example" }, "coffee beans", "Ukraine", async query => {
+    calls.push(query);
+    return [result("Coffee beans. MOQ 20 kg. Wholesale price 618 ₴/кг. We deliver throughout Ukraine.")];
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(enriched.delivery.status, "confirmed");
+  assert.equal(enriched.moq, "20 кг");
+  assert.equal(enriched.price, "618 ₴/кг");
+});
+
+test("confirmed delivery with missing MOQ performs one bounded supplier-specific fact completion", async () => {
+  const calls: Array<{ query: string; maxResults: number }> = [];
+  const enriched = await enrichSupplier({ title: "Exact Coffee", url: "https://exact-coffee.example" }, "coffee beans", "Ukraine", async (query, options) => {
+    calls.push({ query, maxResults: options.maxResults });
+    if (calls.length === 1) return [result("Coffee beans. Wholesale price 618 ₴/кг. We deliver throughout Ukraine.")];
+    return [result("Exact Coffee supplies coffee beans. Minimum order 30 kg.", { url: "https://profile.example/exact" })];
+  });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].maxResults, 5);
+  assert.match(calls[1].query, /^"Exact Coffee" "exact-coffee\.example" coffee beans MOQ minimum order wholesale order$/);
+  assert.doesNotMatch(calls[1].query, /product price/);
+  assert.equal(enriched.moq, "30 кг");
+  assert.equal(enriched.price, "618 ₴/кг");
+  assert.equal(enriched.delivery.status, "confirmed");
+});
+
+test("confirmed delivery with missing price performs one targeted fact completion", async () => {
+  const calls: string[] = [];
+  const enriched = await enrichSupplier({ title: "Exact Coffee", url: "https://exact-coffee.example" }, "coffee beans", "Ukraine", async query => {
+    calls.push(query);
+    if (calls.length === 1) return [result("Coffee beans. MOQ 20 kg. We deliver throughout Ukraine.")];
+    return [result("Exact Coffee coffee beans. Price 620 грн/кг.", { url: "https://profile.example/exact" })];
+  });
+  assert.equal(calls.length, 2);
+  assert.match(calls[1], /price wholesale price product price$/);
+  assert.doesNotMatch(calls[1], /MOQ minimum order/);
+  assert.equal(enriched.moq, "20 кг");
+  assert.equal(enriched.price, "620 грн/кг");
+  assert.equal(enriched.delivery.status, "confirmed");
+});
+
+test("not-available delivery skips fact completion even when informational facts are missing", async () => {
   let calls = 0;
   const enriched = await enrichSupplier({ title: "Exact Coffee", url: "https://exact-coffee.example" }, "coffee beans", "Ukraine", async () => {
     calls += 1;
-    return [result("Coffee beans. We deliver throughout Ukraine.")];
+    return [result("Coffee beans. We do not ship to Ukraine.")];
   });
   assert.equal(calls, 1);
+  assert.equal(enriched.delivery.status, "not_available");
+  assert.equal(enriched.moq, null);
+  assert.equal(enriched.price, null);
+});
+
+test("fact completion retains current ownership, product, and conservative extraction gates", async () => {
+  const unsafeResults = [
+    result("Other Coffee coffee beans. MOQ 5 kg. Price 500 грн/кг.", { title: "Other Coffee", url: "https://other.example/coffee" }),
+    result("Top 10 suppliers. Exact Coffee coffee beans. MOQ 6 kg. Price 510 грн/кг.", { title: "Top 10 coffee suppliers", url: "https://directory.example/top" }),
+    result("Exact Coffee tea. MOQ 7 kg. Price 520 грн/кг.", { title: "Exact Coffee tea", url: "https://profile.example/tea" }),
+    result("Exact Coffee coffee beans in a 20 kg package. Minimum order value 530 грн. Delivery fee 40 грн.", { url: "https://profile.example/exact" }),
+  ];
+  const calls: string[] = [];
+  const enriched = await enrichSupplier({ title: "Exact Coffee", url: "https://exact-coffee.example" }, "coffee beans", "Ukraine", async query => {
+    calls.push(query);
+    return calls.length === 1 ? [result("Coffee beans. We deliver throughout Ukraine.")] : unsafeResults;
+  });
+  assert.equal(calls.length, 2, "fact completion is bounded to one external search");
+  assert.match(calls[1], /MOQ minimum order wholesale order price wholesale price product price$/);
   assert.equal(enriched.delivery.status, "confirmed");
+  assert.equal(enriched.moq, null);
+  assert.equal(enriched.price, null);
 });
 
 test("official and external request failures leave a safe unconfirmed result", async () => {

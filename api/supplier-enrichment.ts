@@ -38,7 +38,7 @@ export type EnrichmentDiagnostics = (
   payload: Record<string, unknown>,
 ) => void;
 
-type SourcedField = ExtractedField & { sourceUrl?: string };
+type SourcedField = ExtractedField & { sourceUrl?: string; sourceType?: EvidenceSource };
 
 const GENERIC_EXTERNAL = /(?:top|топ|rating|рейтинг|best|кращі|list of|список|directory|каталог)\s*(?:\d+\s*)?(?:coffee\s*)?(?:suppliers?|manufacturers?|постачальник\p{L}*|виробник\p{L}*)/iu;
 const DELIVERY_WORD = /(?:deliver(?:y|ies|ed|ing)?|ship(?:ping|s|ped)?|supply|достав(?:ка|ляємо|ляє|ляють|ити|ки|ку)|постав(?:ка|ляємо|ляє|ляють|ки|ку))/iu;
@@ -233,16 +233,16 @@ export function extractVerifiedEnrichment(
 
   for (const result of eligible) {
     const product = productEvidence(result);
-    if (product) productFields.push({ ...product, sourceUrl: result.url });
+    if (product) productFields.push({ ...product, sourceUrl: result.url, sourceType: context.sourceType });
     // MOQ and price require product evidence in this exact result, avoiding values for another product.
     if (product) {
       const moq = extractMoq(result.title, result.content);
       const price = extractPrice(result.title, result.content, product, result.url);
-      if (moq) moqFields.push({ ...moq, sourceUrl: result.url });
-      if (price) priceFields.push({ ...price, sourceUrl: result.url });
+      if (moq) moqFields.push({ ...moq, sourceUrl: result.url, sourceType: context.sourceType });
+      if (price) priceFields.push({ ...price, sourceUrl: result.url, sourceType: context.sourceType });
     }
     const location = explicitLocation(result);
-    if (location) locationFields.push(location);
+    if (location) locationFields.push({ ...location, sourceType: context.sourceType });
     const deliveryApplies = Boolean(product) || CATALOGUE_WIDE_DELIVERY.test(textOf(result));
     const explicitSignal = deliveryApplies ? deliverySignal(result, context.deliveryRegion) : null;
     const networkSignal = context.sourceType === "marketplace"
@@ -341,14 +341,24 @@ export async function enrichSupplier(
   }
 
   const collected = mergeEnrichment(discoveredEvidence, official);
-  if (collected.delivery.status !== "not_confirmed") return collected;
-  const externalQuery = `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${moqRequirement} ${deliveryRegion} shipping delivery wholesale distributor`.replace(/\s+/g, " ").trim();
+  if (collected.delivery.status === "not_available"
+    || (collected.delivery.status === "confirmed" && collected.moq && collected.price)) return collected;
+  const missingFactTerms = [
+    !collected.moq ? "MOQ minimum order wholesale order" : "",
+    !collected.price ? "price wholesale price product price" : "",
+  ].filter(Boolean).join(" ");
+  const factCompletion = collected.delivery.status === "confirmed";
+  const externalQuery = factCompletion
+    ? `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${missingFactTerms}`.replace(/\s+/g, " ").trim()
+    : `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${moqRequirement} ${deliveryRegion} shipping delivery wholesale distributor`.replace(/\s+/g, " ").trim();
   try {
     const externalResults = await search(
       externalQuery,
       { maxResults: 5 },
     );
-    observeEvidence?.(externalResults);
+    // Fact completion enriches only the current, already-resolved supplier. It is
+    // not another discovery or promotion pass.
+    if (!factCompletion) observeEvidence?.(externalResults);
     const external = extractVerifiedEnrichment(externalResults, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external" });
     diagnostics?.("external", {
       supplierTitle: supplier.title,
