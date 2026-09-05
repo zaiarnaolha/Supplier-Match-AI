@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import handler from "../api/search-suppliers.ts";
+import handler, { retainUniqueSupplierRows } from "../api/search-suppliers.ts";
 import { buildSupplierSearchRequest } from "../shared/supplier-search-criteria.ts";
 
 type Payload = { query?: string; include_domains?: string[]; max_results?: number };
@@ -527,4 +527,48 @@ test("supplier found during enrichment is promoted once without contaminating th
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
   }
+});
+
+test("KavaUA verified enrichment evidence cannot promote or return its existing domain identity twice", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.TAVILY_API_KEY;
+  process.env.TAVILY_API_KEY = "test-key";
+  let discoveryCalls = 0;
+  let calls = 0;
+  globalThis.fetch = async (_input, init) => {
+    calls += 1;
+    const payload = JSON.parse(String(init?.body)) as Payload;
+    if (!payload.include_domains && !payload.query?.startsWith('"')) {
+      discoveryCalls += 1;
+      return discoveryCalls === 1 ? tavily([{
+        title: "☕ Кава в зернах свіжого обсмаження TESORO", url: "https://kavaua.com.ua/product/tesoro",
+        content: "KavaUA — постачальник кави в зернах оптом для HoReCa. Доставка по Україні.", score: 0.95,
+      }]) : tavily([]);
+    }
+    if (payload.include_domains?.[0] === "kavaua.com.ua") return tavily([{
+      title: "KavaUA доставка", url: "https://kavaua.com.ua/delivery",
+      content: "Кава в зернах. Доставка по Україні.", score: 0.9,
+    }]);
+    if (payload.query?.startsWith('"KavaUA"')) return tavily([{
+      title: "Профіль постачальника", url: "https://directory.example/kavaua",
+      content: "Компанія: KavaUA. Постачальник кави в зернах оптом для HoReCa. Доставка по Україні.", score: 0.8,
+    }]);
+    return tavily([]);
+  };
+  try {
+    const response = await invoke();
+    assert.equal(response.responseBody.results.filter(item => item.title === "KavaUA").length, 1);
+    assert.equal(calls, 4, "existing KavaUA evidence must not trigger promoted enrichment");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.TAVILY_API_KEY; else process.env.TAVILY_API_KEY = originalKey;
+  }
+});
+
+test("final uniqueness retains one deterministic company row without borrowing duplicate supplier facts", () => {
+  const retained = retainUniqueSupplierRows([
+    { result: { title: "KavaUA", moq: null, price: null, delivery: "confirmed" }, equivalenceKeys: ["domain:kavaua.com.ua", "company:kavaua"] },
+    { result: { title: "KavaUA", moq: "5 кг", price: "500 грн", delivery: "confirmed" }, equivalenceKeys: ["company:kavaua"] },
+  ]);
+  assert.deepEqual(retained, [{ title: "KavaUA", moq: null, price: null, delivery: "confirmed" }]);
 });

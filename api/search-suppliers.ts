@@ -56,6 +56,20 @@ interface SupplierSearchResult extends TavilyResult {
   delivery: DeliveryVerification;
 }
 
+interface EnrichedSupplier {
+  result: SupplierSearchResult;
+  equivalenceKeys: string[];
+}
+
+export function retainUniqueSupplierRows<T>(rows: Array<{ result: T; equivalenceKeys: string[] }>): T[] {
+  const returnedIdentityKeys = new Set<string>();
+  return rows.filter(row => {
+    if (row.equivalenceKeys.some(key => returnedIdentityKeys.has(key))) return false;
+    for (const key of row.equivalenceKeys) returnedIdentityKeys.add(key);
+    return true;
+  }).map(row => row.result);
+}
+
 const DISCOVERY_EXPANSION_TARGET = 8;
 const DISCOVERY_MAX_RESULTS = 10;
 const PROMOTION_MAX_CANDIDATES = 4;
@@ -301,7 +315,7 @@ export default async function handler(
   let externalCalls = 0;
   const finalDiagnostics: Array<{ supplierTitle: string; supplierUrl: string; primary: unknown; official: unknown; external: unknown; final: unknown }> = [];
   const promotionEvidence: DiscoveryEvidence[] = [];
-  const enrichCandidate = async (candidate: ResolvedSupplier, allowPromotion: boolean) => {
+  const enrichCandidate = async (candidate: ResolvedSupplier, allowPromotion: boolean, equivalenceKeys = candidate.equivalenceKeys): Promise<EnrichedSupplier> => {
     const primary = {
       product: evidenceProduct(candidate.evidence, requestedProductValue),
       moq: null,
@@ -346,7 +360,7 @@ export default async function handler(
     );
     const fields = mergeEnrichment(primary, verification);
     if (diagnosticsEnabled) diagnosticTrace.final = fields;
-    return {
+    const result = {
       title: candidate.identity.name,
       url: candidate.identity.officialUrl ?? candidate.primaryEvidence.url,
       content: candidate.primaryEvidence.content,
@@ -360,12 +374,19 @@ export default async function handler(
       price: fields.price,
       delivery: fields.delivery,
     } satisfies SupplierSearchResult;
+    return { result, equivalenceKeys };
   };
   const initiallyEnriched = await Promise.all(candidates.map(candidate => enrichCandidate(candidate, true)));
-  const initialCompanyKeys = new Set(candidates.map(candidate => companyIdentityKey(candidate.identity)));
   const promotionEvaluation = resolveSupplierIdentities([...discoveryEvidence, ...promotionEvidence]);
+  const overlaps = (left: string[], right: Set<string>): boolean => left.some(key => right.has(key));
+  const initialIdentityKeys = new Set(candidates.flatMap(candidate => candidate.equivalenceKeys));
+  const expandedKeysFor = (candidate: ResolvedSupplier): string[] => {
+    const ownKeys = new Set(candidate.equivalenceKeys);
+    return promotionEvaluation.suppliers.find(group => overlaps(group.equivalenceKeys, ownKeys))?.equivalenceKeys ?? candidate.equivalenceKeys;
+  };
+  for (const [index, candidate] of candidates.entries()) initiallyEnriched[index].equivalenceKeys = expandedKeysFor(candidate);
   const promotedCandidates = promotionEvaluation.suppliers
-    .filter(candidate => !initialCompanyKeys.has(companyIdentityKey(candidate.identity)))
+    .filter(candidate => !overlaps(candidate.equivalenceKeys, initialIdentityKeys))
     .slice(0, PROMOTION_MAX_CANDIDATES);
   if (diagnosticsEnabled) {
     diagnosticsLog("PROMOTION", {
@@ -384,10 +405,13 @@ export default async function handler(
   }
   const promotedEnriched = await Promise.all(promotedCandidates.map(candidate => enrichCandidate(candidate, false)));
   const enriched = [...initiallyEnriched, ...promotedEnriched];
-  const results = rankAndFilterByDelivery(enriched).filter(result => result.product === requestedProductValue);
+  const ranked = rankAndFilterByDelivery(enriched.map(item => item.result)).filter(result => result.product === requestedProductValue);
+  const enrichedByResult = new Map(enriched.map(item => [item.result, item]));
+  const results = retainUniqueSupplierRows(ranked.map(result => enrichedByResult.get(result) ?? { result, equivalenceKeys: [] }));
 
   if (diagnosticsEnabled) {
-    for (const [candidateIndex, candidate] of enriched.entries()) {
+    for (const [candidateIndex, enrichedCandidate] of enriched.entries()) {
+      const candidate = enrichedCandidate.result;
       const trace = finalDiagnostics.find(item => item.supplierUrl === candidate.url);
       const rankingIndex = results.findIndex(result => result.url === candidate.url);
       diagnosticsLog("FINAL", {
@@ -423,9 +447,9 @@ export default async function handler(
       promotedCandidateCount: promotedCandidates.length,
       officialCalls,
       externalCalls,
-      confirmedDeliveryCount: enriched.filter(item => item.delivery.status === "confirmed").length,
-      notConfirmedDeliveryCount: enriched.filter(item => item.delivery.status === "not_confirmed").length,
-      notAvailableCount: enriched.filter(item => item.delivery.status === "not_available").length,
+      confirmedDeliveryCount: enriched.filter(item => item.result.delivery.status === "confirmed").length,
+      notConfirmedDeliveryCount: enriched.filter(item => item.result.delivery.status === "not_confirmed").length,
+      notAvailableCount: enriched.filter(item => item.result.delivery.status === "not_available").length,
       returnedCount: results.length,
     });
   }
