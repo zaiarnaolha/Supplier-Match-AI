@@ -186,6 +186,22 @@ test("merge retains structured observations and recomputes rather than discardin
   assert.equal(mergeEnrichment(first, incompatible).price, null);
 });
 
+test("structured candidates survive production-style object copies and a primary merge", () => {
+  const verified = extractVerifiedEnrichment([result("Whole bean coffee. Wholesale price 600 грн.")], context);
+  const copied = { ...verified };
+  assert.equal(priceCandidatesOf(copied).length, 1, "object spread must retain private candidate metadata");
+  assert.equal(JSON.stringify(copied).includes("structuredPrices"), false, "internal metadata must not enter public JSON");
+
+  const primary = {
+    product: "Кава в зернах", moq: null, price: null, supplierLocation: null,
+    delivery: { region: "Ukraine", status: "not_confirmed" as const, evidence: null, sourceUrl: null, sourceType: null },
+  };
+  const merged = mergeEnrichment(primary, copied);
+  assert.equal(merged.price, "600 грн");
+  assert.equal(priceCandidatesOf(merged).length, 1);
+  assert.deepEqual(Object.keys(merged).sort(), ["delivery", "moq", "price", "product", "supplierLocation"]);
+});
+
 test("identity-bound product-relevant discovery evidence contributes MOQ and price", async () => {
   const discovery = result(
     "Кава в зернах для бізнесу. Мінімальне замовлення 12 кг. Оптова ціна 620 грн/кг.",

@@ -71,6 +71,7 @@ test("keeps exact, sourced-from, and computed-from price semantics distinct", ()
   assert.equal(extractPrice("Whole bean coffee", "Price від 535 грн/кг", product, url)?.value, "від 535 грн/кг");
   assert.equal(sourced[0].sourceExpressedFrom, true);
   assert.equal(extractPrice("Whole bean coffee", "Wholesale prices: 616 грн/кг, 660 грн/кг, 704 грн/кг, 792 грн/кг", product, url)?.value, "від 616 грн/кг");
+  assert.equal(extractPrice("Whole bean coffee", "Wholesale price 616 UAH / 1 kg. Wholesale price 660 UAH / 1 kg. Wholesale price 704 UAH / 1 kg.", product, url)?.value, "від 616 UAH / 1 kg");
 });
 
 test("deduplicates observations and refuses incompatible price groups", () => {

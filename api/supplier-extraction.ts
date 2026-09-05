@@ -42,7 +42,7 @@ const COUNTRIES: readonly CountryDefinition[] = [{
 const MOQ_MARKER = /(?:minimum\s+order(?:\s+quantity)?|moq|мінімальн(?:е\s+замовлення|а\s+партія|ий\s+обсяг|ого\s+обсягу)|замовлення\s+від|опт\s+від|гуртом\s+від|wholesale\s+from)/giu;
 const QUANTITY = /(?:від\s+|from\s+)?\d+(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[.,]\d+)?)?\s*(?:кг|kg|кілограм(?:и|ів)?|шт\.?|pcs?|pieces?|тонн?(?:и)?|т|g|грам(?:и|ів)?|г)(?=$|[^\p{L}\p{N}])/iu;
 const PRICE_MARKER = /(?:оптова\s+ціна|wholesale\s+price|ціна|price|вартість)/giu;
-const MONEY = /(?:від\s+|from\s+)?(?:(?:[$€]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?)?)|(?:\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?)?\s*(?:грн|₴|uah|usd|eur)))(?:\s*\/\s*(?:кг|kg|шт\.?|pcs?|л|l))?/giu;
+const MONEY = /(?:від\s+|from\s+)?(?:(?:[$€]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?)?)|(?:\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[\s.,]\d{3})*(?:[.,]\d+)?)?\s*(?:грн|₴|uah|usd|eur)))(?:\s*\/\s*(?:1\s*)?(?:кг|kg|шт\.?|pcs?|л|l))?/giu;
 const NON_PRODUCT_PAYMENT = /(?:безкоштовн\p{L}*\s+достав|доставк\p{L}*|shipping|free\s+shipping|delivery|купон|coupon|membership|підписк|subscription|комісі|commission|депозит|deposit)/iu;
 const ORDER_VALUE = /(?:мінімальн\p{L}*\s+(?:вартість|сума)\s+замовлення|minimum\s+order\s+(?:value|amount)|order\s+minimum)/iu;
 const EXPLICIT_OTHER_PRODUCT = /(?:\btea\b|\bчай\b|офісн\p{L}*\s+папір|office\s+paper|detergent|мий(?:ний|ні)\s+засіб)/iu;
@@ -138,7 +138,7 @@ function currencyOf(raw: string): PriceCurrency | null {
 }
 
 function basisOf(raw: string, evidence: string): string | null {
-  const unit = raw.match(/\/\s*(кг|kg|шт\.?|pcs?|л|l)(?=$|[^\p{L}])/iu)?.[1]?.toLocaleLowerCase();
+  const unit = raw.match(/\/\s*(?:1\s*)?(кг|kg|шт\.?|pcs?|л|l)(?=$|[^\p{L}])/iu)?.[1]?.toLocaleLowerCase();
   if (unit) return /^(?:кг|kg)$/u.test(unit) ? "per_kg" : /^(?:шт|pcs?\.?)$/u.test(unit) ? "per_item" : "per_litre";
   const packageSize = evidence.match(/\b(\d+(?:[.,]\d+)?)\s*(кг|kg|г|g|гр|gram(?:s)?)\b/iu);
   return packageSize ? `package:${packageSize[1].replace(",", ".")}${packageSize[2].toLocaleLowerCase()}` : null;
@@ -210,12 +210,12 @@ export function extractPriceCandidates(title: string, content: string, product: 
       if (!isZeroMoney(price[0])) { const item = candidate(price[0], nearby, "labelled", product, url); if (item) findings.push(item); }
     }
   }
-  // Distinct values in separately labelled snippets may describe unrelated SKUs.
-  // A source may aggregate them only when it presents the values together as one bound list;
-  // enrichment can still combine independently validated single-price results later.
+  // Multiple otherwise-unbound exact values remain ambiguous. Explicitly scoped
+  // wholesale/retail observations proceed to semantic comparison instead.
   const labelledEvidence = new Set(findings.filter(item => item.evidenceType === "labelled").map(item => item.evidence));
   const labelledValues = new Set(findings.filter(item => item.evidenceType === "labelled").map(item => decimalKey(item.amount)));
-  if (labelledEvidence.size > 1 && labelledValues.size > 1) return [];
+  if (labelledEvidence.size > 1 && labelledValues.size > 1
+    && findings.every(item => item.commercialScope === "unspecified")) return [];
   if (findings.length === 0 && product) {
     for (const sentence of text.split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
       if (NON_PRODUCT_PAYMENT.test(sentence) || ORDER_VALUE.test(sentence) || !extractProduct(sentence, "", url)) continue;

@@ -39,16 +39,19 @@ export type EnrichmentDiagnostics = (
 ) => void;
 
 type SourcedField = ExtractedField & { sourceUrl?: string; sourceType?: EvidenceSource };
-const structuredPrices = new WeakMap<EnrichmentResult, PriceCandidate[]>();
+const STRUCTURED_PRICES = Symbol("structuredPrices");
+type StructuredPriceResult = EnrichmentResult & { [STRUCTURED_PRICES]?: PriceCandidate[] };
 
 function withStructuredPrices(result: EnrichmentResult, candidates: PriceCandidate[]): EnrichmentResult {
-  structuredPrices.set(result, candidates);
+  // Symbol keys survive ordinary object spread while remaining absent from
+  // Object.keys and JSON, so internal composition cannot silently lose them.
+  if (candidates.length > 0) (result as StructuredPriceResult)[STRUCTURED_PRICES] = candidates;
   return result;
 }
 
 /** Internal diagnostic/testing accessor; candidates are deliberately absent from the public JSON shape. */
 export function priceCandidatesOf(result: EnrichmentResult): readonly PriceCandidate[] {
-  return structuredPrices.get(result) ?? [];
+  return (result as StructuredPriceResult)[STRUCTURED_PRICES] ?? [];
 }
 
 const GENERIC_EXTERNAL = /(?:top|топ|rating|рейтинг|best|кращі|list of|список|directory|каталог)\s*(?:\d+\s*)?(?:coffee\s*)?(?:suppliers?|manufacturers?|постачальник\p{L}*|виробник\p{L}*)/iu;
