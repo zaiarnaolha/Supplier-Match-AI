@@ -47,9 +47,9 @@ test("Responses API uses web search and structured output without Tavily", async
     return new Response(JSON.stringify({ output_text: JSON.stringify({ suppliers: [{
       name: "Example Roaster", website: "https://supplier.example", location: "Poland",
       product: { displayValue: "Whole bean coffee", sourceUrl: "https://supplier.example/coffee" },
-      delivery: { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: "https://supplier.example/shipping" },
-      moq: { value: null, unit: null, displayValue: null, sourceUrl: null },
-      price: { displayValue: null, type: "unknown", sourceUrl: null },
+      delivery: { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: "https://supplier.example/shipping", evidenceText: "We ship orders to Ukraine." },
+      moq: { value: null, unit: null, displayValue: null, sourceUrl: null, evidenceText: null },
+      price: { displayValue: null, type: "unknown", sourceUrl: null, evidenceText: null },
       sources: ["https://supplier.example/coffee", "not-a-url"],
     }] }) }), { status: 200 });
   };
@@ -58,7 +58,11 @@ test("Responses API uses web search and structured output without Tavily", async
     assert.equal(result.statusCode, 200);
     assert.equal(requestUrl, "https://api.openai.com/v1/responses");
     assert.equal(payload.model, "gpt-5-mini");
-    assert.deepEqual(payload.tools, [{ type: "web_search" }]);
+    assert.deepEqual(payload.tools, [{ type: "web_search", search_context_size: "high" }]);
+    assert.equal(payload.input, JSON.stringify({ query: "coffee beans", deliveryRegion: "Ukraine" }));
+    assert.match(String(payload.instructions), /bounded evidence workflow/);
+    assert.match(String(payload.instructions), /Package\/SKU size, product weight, or an available quantity is not MOQ/);
+    assert.match(String(payload.instructions), /Classify a price as wholesale only when that exact price/);
     assert.equal((payload.text as { format: { type: string; strict: boolean } }).format.type, "json_schema");
     assert.equal((payload.text as { format: { strict: boolean } }).format.strict, true);
     assert.equal(JSON.stringify(payload).includes("Tavily"), false);
@@ -75,12 +79,65 @@ test("normalization cannot turn unsupported delivery or buyer limits into suppli
   const [supplier] = normalizeOpenAISuppliers({ suppliers: [{
     name: "Unverified Supplier", website: null, location: null,
     product: { displayValue: "Coffee", sourceUrl: null },
-    delivery: { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: null },
-    moq: { value: 20, unit: "kg", displayValue: "20 kg", sourceUrl: null },
-    price: { displayValue: "$10 buyer maximum", type: "wholesale", sourceUrl: null },
+    delivery: { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: null, evidenceText: "Ships to Ukraine" },
+    moq: { value: 20, unit: "kg", displayValue: "20 kg", sourceUrl: null, evidenceText: "Buyer requested maximum 20 kg" },
+    price: { displayValue: "$10 buyer maximum", type: "wholesale", sourceUrl: null, evidenceText: "Buyer maximum price $10" },
     sources: [],
   }] });
   assert.deepEqual(supplier.delivery, { status: "not_confirmed", displayValue: null, sourceUrl: null });
+  assert.deepEqual(supplier.moq, { value: null, unit: null, displayValue: null, sourceUrl: null });
+  assert.deepEqual(supplier.price, { displayValue: null, type: "unknown", sourceUrl: null });
+});
+
+function candidate(overrides: Record<string, unknown> = {}) {
+  return {
+    name: "Generic B2B Supplier", website: "https://supplier.example", location: "Ukraine",
+    product: { displayValue: "Coffee beans", sourceUrl: "https://supplier.example/coffee" },
+    delivery: { status: "not_confirmed", displayValue: null, sourceUrl: null, evidenceText: null },
+    moq: { value: null, unit: null, displayValue: null, sourceUrl: null, evidenceText: null },
+    price: { displayValue: null, type: "unknown", sourceUrl: null, evidenceText: null },
+    sources: [], ...overrides,
+  };
+}
+
+test("pack size is rejected while an explicit minimum wholesale order is retained", () => {
+  const [packSize, explicitMinimum] = normalizeOpenAISuppliers({ suppliers: [
+    candidate({ moq: { value: 1, unit: "kg", displayValue: "1 kg", sourceUrl: "https://supplier.example/pack", evidenceText: "Available in 1 kg packages." } }),
+    candidate({ name: "Explicit MOQ Supplier", moq: { value: 5, unit: "kg", displayValue: "5 kg", sourceUrl: "https://supplier.example/terms", evidenceText: "Minimum wholesale order: 5 kg." } }),
+  ] }, "Ukraine");
+
+  assert.deepEqual(packSize.moq, { value: null, unit: null, displayValue: null, sourceUrl: null });
+  assert.deepEqual(explicitMinimum.moq, { value: 5, unit: "kg", displayValue: "5 kg", sourceUrl: "https://supplier.example/terms" });
+});
+
+test("listed starting price is not promoted to wholesale but an explicit wholesale price is", () => {
+  const [listed, wholesale] = normalizeOpenAISuppliers({ suppliers: [
+    candidate({ price: { displayValue: "from 535 UAH/kg", type: "wholesale", sourceUrl: "https://supplier.example/catalog", evidenceText: "Wholesale solutions for cafes. Listed prices from 535 UAH/kg." } }),
+    candidate({ name: "Tiered Supplier", price: { displayValue: "480 UAH/kg", type: "wholesale", sourceUrl: "https://supplier.example/b2b", evidenceText: "Wholesale price for orders of 10–20 kg: 480 UAH/kg." } }),
+  ] }, "Ukraine");
+
+  assert.equal(listed.price.type, "base");
+  assert.equal(listed.price.displayValue, "from 535 UAH/kg");
+  assert.equal(wholesale.price.type, "wholesale");
+  assert.equal(wholesale.price.displayValue, "480 UAH/kg");
+});
+
+test("market presence and supplier location do not confirm delivery, but explicit shipping does", () => {
+  const [presence, shipping] = normalizeOpenAISuppliers({ suppliers: [
+    candidate({ delivery: { status: "confirmed", displayValue: "Ukraine market", sourceUrl: "https://supplier.example/about", evidenceText: "A Ukrainian supplier serving HoReCa customers in Ukraine." } }),
+    candidate({ name: "Foreign Supplier", location: "Poland", delivery: { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: "https://supplier.example/shipping", evidenceText: "We ship wholesale orders to Ukraine." } }),
+  ] }, "Ukraine");
+
+  assert.deepEqual(presence.delivery, { status: "not_confirmed", displayValue: null, sourceUrl: null });
+  assert.deepEqual(shipping.delivery, { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: "https://supplier.example/shipping" });
+});
+
+test("buyer constraints and unrelated charges cannot become supplier MOQ or price", () => {
+  const [supplier] = normalizeOpenAISuppliers({ suppliers: [candidate({
+    moq: { value: 20, unit: "kg", displayValue: "20 kg", sourceUrl: "https://supplier.example/search", evidenceText: "Buyer requested maximum MOQ 20 kg." },
+    price: { displayValue: "100 UAH", type: "listed", sourceUrl: "https://supplier.example/shipping", evidenceText: "Delivery cost: 100 UAH." },
+  })] }, "Ukraine");
+
   assert.deepEqual(supplier.moq, { value: null, unit: null, displayValue: null, sourceUrl: null });
   assert.deepEqual(supplier.price, { displayValue: null, type: "unknown", sourceUrl: null });
 });
