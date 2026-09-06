@@ -164,6 +164,22 @@ test("MOQ and concrete price require explicit evidence on a product-relevant res
   assert.equal(enriched.price, "618 ₴/кг");
 });
 
+test("equivalent MOQ evidence across results prefers explicit lower-bound wording", () => {
+  const enriched = extractVerifiedEnrichment([
+    result("Кава в зернах. Мінімальна партія 5 кг."),
+    result("Кава в зернах. Опт від 5 кг.", { url: "https://exact-coffee.example/wholesale" }),
+  ], context);
+  assert.equal(enriched.moq, "від 5 кг");
+});
+
+test("conflicting MOQ evidence across results remains unknown", () => {
+  const enriched = extractVerifiedEnrichment([
+    result("Whole bean coffee. MOQ 5 kg."),
+    result("Whole bean coffee. MOQ 10 kg.", { url: "https://exact-coffee.example/wholesale" }),
+  ], context);
+  assert.equal(enriched.moq, null);
+});
+
 test("computes from only across distinct comparable exact observations", () => {
   const enriched = extractVerifiedEnrichment([
     result("Whole bean coffee. Price 620 UAH/kg."),
