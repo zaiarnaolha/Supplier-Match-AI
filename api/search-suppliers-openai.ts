@@ -19,7 +19,6 @@ export interface OpenAISupplier {
   location: string | null;
   product: { displayValue: string | null; sourceUrl: string | null };
   delivery: { status: "confirmed" | "not_confirmed"; displayValue: string | null; sourceUrl: string | null };
-  moq: { value: number | null; unit: string | null; displayValue: string | null; sourceUrl: string | null };
   price: { displayValue: string | null; type: PriceType; sourceUrl: string | null };
   sources: string[];
 }
@@ -38,7 +37,7 @@ const supplierSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["name", "website", "location", "product", "delivery", "moq", "price", "sources"],
+        required: ["name", "website", "location", "product", "delivery", "price", "sources"],
         properties: {
           name: { type: "string" },
           website: { type: ["string", "null"] },
@@ -49,15 +48,6 @@ const supplierSchema = {
             required: ["status", "displayValue", "sourceUrl", "evidenceText"],
             properties: {
               status: { type: "string", enum: ["confirmed", "not_confirmed"] },
-              displayValue: { type: ["string", "null"] }, sourceUrl: { type: ["string", "null"] },
-              evidenceText: { type: ["string", "null"] },
-            },
-          },
-          moq: {
-            type: "object", additionalProperties: false,
-            required: ["value", "unit", "displayValue", "sourceUrl", "evidenceText"],
-            properties: {
-              value: { type: ["number", "null"] }, unit: { type: ["string", "null"] },
               displayValue: { type: ["string", "null"] }, sourceUrl: { type: ["string", "null"] },
               evidenceText: { type: ["string", "null"] },
             },
@@ -116,17 +106,6 @@ function explicitlySupportsDelivery(evidence: string | null, deliveryRegion: str
   return deliveryAction && mentionsRegion;
 }
 
-function explicitlySupportsMoq(moq: Record<string, unknown>): boolean {
-  const evidence = text(moq.evidenceText);
-  const unit = text(moq.unit);
-  if (!evidence || !unit || typeof moq.value !== "number" || !Number.isFinite(moq.value) || moq.value <= 0) return false;
-  const claim = normalized(evidence);
-  if (/buyer|requested?|maximum|max\.?|до\s+\d|покупц|запит|бажан/iu.test(claim)) return false;
-  const minimumOrder = /\b(?:moq|minimum\s+(?:wholesale\s+)?(?:order|purchase|quantity)|wholesale\s+(?:orders?\s+)?from)\b|мінімальн\p{L}*\s+(?:замовлен|парті|кількіст|обсяг)|замовлення\s+від|опт(?:ом)?\s+від|гуртом\s+від|минимальн\p{L}*\s+(?:заказ|парт)/iu.test(claim);
-  const quantity = String(moq.value).replace(".", "[.,]");
-  return minimumOrder && new RegExp(`(^|\\D)${quantity}(?!\\d)`).test(claim) && claim.includes(normalized(unit).slice(0, 2));
-}
-
 function validatedPriceType(price: Record<string, unknown>, evidence: string): PriceType {
   const requestedType = text(price.type) as PriceType | null;
   if (requestedType !== "wholesale") return requestedType && PRICE_TYPES.has(requestedType) ? requestedType : "unknown";
@@ -162,16 +141,13 @@ export function normalizeOpenAISuppliers(value: unknown, deliveryRegion = ""): O
     if (!name) return [];
     const product = record(supplier.product);
     const delivery = record(supplier.delivery);
-    const moq = record(supplier.moq);
     const price = record(supplier.price);
     const productSource = url(product.sourceUrl);
     const deliverySource = url(delivery.sourceUrl);
-    const moqSource = url(moq.sourceUrl);
     const priceSource = url(price.sourceUrl);
     const website = url(supplier.website);
     const suppliedSources = Array.isArray(supplier.sources) ? supplier.sources.map(url).filter((item): item is string => item !== null) : [];
-    const sources = [...new Set([website, productSource, deliverySource, moqSource, priceSource, ...suppliedSources].filter((item): item is string => item !== null))];
-    const hasMoqEvidence = moqSource !== null && explicitlySupportsMoq(moq);
+    const sources = [...new Set([website, productSource, deliverySource, priceSource, ...suppliedSources].filter((item): item is string => item !== null))];
     const priceEvidence = priceSource ? explicitlySupportsPrice(price) : null;
     const hasPriceEvidence = priceEvidence !== null;
     const deliveryEvidence = text(delivery.evidenceText);
@@ -186,12 +162,6 @@ export function normalizeOpenAISuppliers(value: unknown, deliveryRegion = ""): O
         status: delivery.status === "confirmed" && hasDeliveryEvidence ? "confirmed" : "not_confirmed",
         displayValue: hasDeliveryEvidence ? text(delivery.displayValue) : null,
         sourceUrl: hasDeliveryEvidence ? deliverySource : null,
-      },
-      moq: {
-        value: hasMoqEvidence && typeof moq.value === "number" && Number.isFinite(moq.value) && moq.value >= 0 ? moq.value : null,
-        unit: hasMoqEvidence ? text(moq.unit) : null,
-        displayValue: hasMoqEvidence ? text(moq.displayValue) : null,
-        sourceUrl: hasMoqEvidence ? moqSource : null,
       },
       price: {
         displayValue: hasPriceEvidence ? text(price.displayValue) : null,
@@ -224,11 +194,10 @@ function instructions(query: string, deliveryRegion: string): string {
 2. Search for multiple concrete candidates. Prefer manufacturers, producers/roasters, distributors, wholesalers, HoReCa/B2B suppliers, and supplier-specific marketplace sellers with an identifiable seller. Generic retail stores must not outrank well-evidenced B2B suppliers.
 3. Identify the concrete supplier, then inspect supplier-specific, product-relevant pages. Prefer first-party official sources; discovery pages and snippets may locate candidates but are not automatically supplier-owned evidence.
 4. Independently verify delivery to the requested market. Location, market presence, Ukrainian identity, customers, or HoReCa positioning do not prove delivery. A foreign supplier remains eligible when shipping/service to the market is evidenced.
-5. Verify MOQ only from language explicitly establishing a minimum order, minimum wholesale quantity, or minimum purchase requirement. Package/SKU size, product weight, or an available quantity is not MOQ.
-6. Verify price only when the numeric amount is bound to the relevant product. Reject shipping fees, order totals/MOV, discounts, zero values, and unrelated numbers; never select the smallest number on a page. Classify a price as wholesale only when that exact price has price-specific wholesale/B2B/volume-tier evidence. Otherwise use listed, base, negotiated, or unknown conservatively.
-7. MOQ and price are optional enrichment, never eligibility gates. Never copy buyer maximum MOQ/price into supplier facts. Missing facts remain null/unknown.
-8. For each delivery, MOQ, and price claim, copy a short source excerpt into evidenceText and its real page URL into sourceUrl. The excerpt must directly support that fact; do not fabricate excerpts or URLs. The schema is not evidence.
-9. Return a useful evidence-ranked shortlist, not merely the first search results. Requested product evidence plus confirmed delivery are required for usefulness.
+5. Verify price only when the numeric amount is bound to the relevant product. Reject shipping fees, order totals/MOV, discounts, zero values, and unrelated numbers; never select the smallest number on a page. Classify a price as wholesale only when that exact price has price-specific wholesale/B2B/volume-tier evidence. Otherwise use listed, base, negotiated, or unknown conservatively.
+6. Price is optional enrichment, never an eligibility gate. Never copy a buyer maximum price into supplier facts. Missing facts remain null/unknown.
+7. For each delivery and price claim, copy a short source excerpt into evidenceText and its real page URL into sourceUrl. The excerpt must directly support that fact; do not fabricate excerpts or URLs. The schema is not evidence.
+8. Return a useful evidence-ranked shortlist, not merely the first search results. Requested product evidence plus confirmed delivery are required for usefulness.
 
 The delivery market is not a supplier-country restriction. Unsupported facts must be null. Keep research bounded to a concise shortlist.`;
 }
