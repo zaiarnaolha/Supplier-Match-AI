@@ -24,11 +24,11 @@ export interface OpenAISupplier {
   sources: string[];
 }
 
-const MODEL = "gpt-5-mini";
-const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+export const OPENAI_MODEL = "gpt-5-mini";
+export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const PRICE_TYPES = new Set<PriceType>(["wholesale", "listed", "base", "negotiated", "unknown"]);
 
-const supplierSchema = {
+export const supplierSchema = {
   type: "object",
   additionalProperties: false,
   required: ["suppliers"],
@@ -84,12 +84,12 @@ const supplierSchema = {
   },
 } as const;
 
-function text(value: unknown): string | null {
+export function evidenceText(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function url(value: unknown): string | null {
-  const candidate = text(value);
+export function evidenceUrl(value: unknown): string | null {
+  const candidate = evidenceText(value);
   if (!candidate) return null;
   try {
     const parsed = new URL(candidate);
@@ -99,7 +99,7 @@ function url(value: unknown): string | null {
   }
 }
 
-function record(value: unknown): Record<string, unknown> {
+export function evidenceRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
@@ -117,8 +117,8 @@ function explicitlySupportsDelivery(evidence: string | null, deliveryRegion: str
 }
 
 function explicitlySupportsMoq(moq: Record<string, unknown>): boolean {
-  const evidence = text(moq.evidenceText);
-  const unit = text(moq.unit);
+  const evidence = evidenceText(moq.evidenceText);
+  const unit = evidenceText(moq.unit);
   if (!evidence || !unit || typeof moq.value !== "number" || !Number.isFinite(moq.value) || moq.value <= 0) return false;
   const claim = normalized(evidence);
   if (/buyer|requested?|maximum|max\.?|до\s+\d|покупц|запит|бажан/iu.test(claim)) return false;
@@ -128,10 +128,10 @@ function explicitlySupportsMoq(moq: Record<string, unknown>): boolean {
 }
 
 function validatedPriceType(price: Record<string, unknown>, evidence: string): PriceType {
-  const requestedType = text(price.type) as PriceType | null;
+  const requestedType = evidenceText(price.type) as PriceType | null;
   if (requestedType !== "wholesale") return requestedType && PRICE_TYPES.has(requestedType) ? requestedType : "unknown";
   const claim = normalized(evidence);
-  const amount = text(price.displayValue)?.match(/\d+(?:[.,]\d+)?/)?.[0]?.replace(",", ".");
+  const amount = evidenceText(price.displayValue)?.match(/\d+(?:[.,]\d+)?/)?.[0]?.replace(",", ".");
   if (!amount) return "unknown";
   const escapedAmount = amount.replace(".", "[.,]");
   const priceSpecificWholesale = new RegExp(`(?:wholesale|b2b|volume|quantity|оптов\\p{L}*|гуртов\\p{L}*)[^.\\n]{0,45}(?:price|ціна|вартість|tier|${escapedAmount})`, "iu").test(claim)
@@ -141,8 +141,8 @@ function validatedPriceType(price: Record<string, unknown>, evidence: string): P
 }
 
 function explicitlySupportsPrice(price: Record<string, unknown>): string | null {
-  const evidence = text(price.evidenceText);
-  const displayValue = text(price.displayValue);
+  const evidence = evidenceText(price.evidenceText);
+  const displayValue = evidenceText(price.displayValue);
   if (!evidence || !displayValue) return null;
   const claim = normalized(evidence);
   if (/buyer|requested?|maximum|max\.?|покупц|запит|бажан|shipping\s+(?:fee|cost)|delivery\s+(?:fee|cost)|доставк\p{L}*\s+(?:вартіст|тариф)|minimum\s+order\s+value|мінімальн\p{L}*\s+сум/iu.test(claim)) return null;
@@ -153,48 +153,48 @@ function explicitlySupportsPrice(price: Record<string, unknown>): string | null 
 
 /** Remove unsupported model claims rather than promoting model prose to evidence. */
 export function normalizeOpenAISuppliers(value: unknown, deliveryRegion = ""): OpenAISupplier[] {
-  const rows = record(value).suppliers;
+  const rows = evidenceRecord(value).suppliers;
   if (!Array.isArray(rows)) return [];
 
   return rows.flatMap((raw): OpenAISupplier[] => {
-    const supplier = record(raw);
-    const name = text(supplier.name);
+    const supplier = evidenceRecord(raw);
+    const name = evidenceText(supplier.name);
     if (!name) return [];
-    const product = record(supplier.product);
-    const delivery = record(supplier.delivery);
-    const moq = record(supplier.moq);
-    const price = record(supplier.price);
-    const productSource = url(product.sourceUrl);
-    const deliverySource = url(delivery.sourceUrl);
-    const moqSource = url(moq.sourceUrl);
-    const priceSource = url(price.sourceUrl);
-    const website = url(supplier.website);
-    const suppliedSources = Array.isArray(supplier.sources) ? supplier.sources.map(url).filter((item): item is string => item !== null) : [];
+    const product = evidenceRecord(supplier.product);
+    const delivery = evidenceRecord(supplier.delivery);
+    const moq = evidenceRecord(supplier.moq);
+    const price = evidenceRecord(supplier.price);
+    const productSource = evidenceUrl(product.sourceUrl);
+    const deliverySource = evidenceUrl(delivery.sourceUrl);
+    const moqSource = evidenceUrl(moq.sourceUrl);
+    const priceSource = evidenceUrl(price.sourceUrl);
+    const website = evidenceUrl(supplier.website);
+    const suppliedSources = Array.isArray(supplier.sources) ? supplier.sources.map(evidenceUrl).filter((item): item is string => item !== null) : [];
     const sources = [...new Set([website, productSource, deliverySource, moqSource, priceSource, ...suppliedSources].filter((item): item is string => item !== null))];
     const hasMoqEvidence = moqSource !== null && explicitlySupportsMoq(moq);
     const priceEvidence = priceSource ? explicitlySupportsPrice(price) : null;
     const hasPriceEvidence = priceEvidence !== null;
-    const deliveryEvidence = text(delivery.evidenceText);
+    const deliveryEvidence = evidenceText(delivery.evidenceText);
     const hasDeliveryEvidence = deliverySource !== null && explicitlySupportsDelivery(deliveryEvidence, deliveryRegion);
 
     return [{
       name,
       website,
-      location: text(supplier.location),
-      product: { displayValue: productSource ? text(product.displayValue) : null, sourceUrl: productSource },
+      location: evidenceText(supplier.location),
+      product: { displayValue: productSource ? evidenceText(product.displayValue) : null, sourceUrl: productSource },
       delivery: {
         status: delivery.status === "confirmed" && hasDeliveryEvidence ? "confirmed" : "not_confirmed",
-        displayValue: hasDeliveryEvidence ? text(delivery.displayValue) : null,
+        displayValue: hasDeliveryEvidence ? evidenceText(delivery.displayValue) : null,
         sourceUrl: hasDeliveryEvidence ? deliverySource : null,
       },
       moq: {
         value: hasMoqEvidence && typeof moq.value === "number" && Number.isFinite(moq.value) && moq.value >= 0 ? moq.value : null,
-        unit: hasMoqEvidence ? text(moq.unit) : null,
-        displayValue: hasMoqEvidence ? text(moq.displayValue) : null,
+        unit: hasMoqEvidence ? evidenceText(moq.unit) : null,
+        displayValue: hasMoqEvidence ? evidenceText(moq.displayValue) : null,
         sourceUrl: hasMoqEvidence ? moqSource : null,
       },
       price: {
-        displayValue: hasPriceEvidence ? text(price.displayValue) : null,
+        displayValue: hasPriceEvidence ? evidenceText(price.displayValue) : null,
         type: hasPriceEvidence ? validatedPriceType(price, priceEvidence) : "unknown",
         sourceUrl: hasPriceEvidence ? priceSource : null,
       },
@@ -203,15 +203,15 @@ export function normalizeOpenAISuppliers(value: unknown, deliveryRegion = ""): O
   });
 }
 
-function responseText(value: unknown): string | null {
-  const response = record(value);
+export function openAIResponseText(value: unknown): string | null {
+  const response = evidenceRecord(value);
   if (typeof response.output_text === "string") return response.output_text;
   if (!Array.isArray(response.output)) return null;
   for (const item of response.output) {
-    const content = record(item).content;
+    const content = evidenceRecord(item).content;
     if (!Array.isArray(content)) continue;
     for (const part of content) {
-      const candidate = record(part).text;
+      const candidate = evidenceRecord(part).text;
       if (typeof candidate === "string") return candidate;
     }
   }
@@ -243,9 +243,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
   if (typeof body === "string") {
     try { body = JSON.parse(body) as unknown; } catch { response.status(400).json({ error: "Request body must be valid JSON." }); return; }
   }
-  const input = record(body);
-  const query = text(input.query);
-  const deliveryRegion = text(input.deliveryRegion);
+  const input = evidenceRecord(body);
+  const query = evidenceText(input.query);
+  const deliveryRegion = evidenceText(input.deliveryRegion);
   if (!query || !deliveryRegion) {
     response.status(400).json({ error: '"query" and "deliveryRegion" must be non-empty strings.' });
     return;
@@ -261,7 +261,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: MODEL,
+        model: OPENAI_MODEL,
         tools: [{ type: "web_search", search_context_size: "high" }],
         instructions: instructions(query, deliveryRegion),
         input: JSON.stringify({ query, deliveryRegion }),
@@ -270,7 +270,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     });
     if (!upstream.ok) throw new Error("OpenAI request failed");
     const raw: unknown = await upstream.json();
-    const output = responseText(raw);
+    const output = openAIResponseText(raw);
     if (!output) throw new Error("OpenAI response had no output text");
     const results = normalizeOpenAISuppliers(JSON.parse(output) as unknown, deliveryRegion);
     response.status(200).json({ query, deliveryRegion, results });
