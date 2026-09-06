@@ -37,6 +37,8 @@ test("search request, result mapping, supplier cards, and compare flow remain co
   const source = await readFile(new URL("../src/pages/SupplierSearchPage/SupplierSearchPage.tsx", import.meta.url), "utf8");
 
   assert.match(source, /buildSupplierSearchRequest\(query, region\)/);
+  assert.match(source, /fetch\('\/api\/search-suppliers-openai'/);
+  assert.doesNotMatch(source, /fetch\('\/api\/search-suppliers'/);
   assert.match(source, /body: JSON\.stringify\(requestBody\)/);
   assert.match(source, /setSearchResults\(results\.map\(mapSearchResult\)\)/);
   assert.match(source, /result\.delivery\.status === 'confirmed'/);

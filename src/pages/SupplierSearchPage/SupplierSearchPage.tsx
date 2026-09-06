@@ -155,7 +155,7 @@ export function SupplierSearchPage({ query, setQuery, stage, setStage, deliveryR
     const requestBody = buildSupplierSearchRequest(query, region);
 
     try {
-      const response = await fetch('/api/search-suppliers', {
+      const response = await fetch('/api/search-suppliers-openai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),

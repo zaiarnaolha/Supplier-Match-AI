@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import handler, { normalizeOpenAISuppliers } from "../api/search-suppliers-openai.ts";
+import handler, { normalizeOpenAISuppliers, toProductionSupplier } from "../api/search-suppliers-openai.ts";
 
 async function invoke(method = "POST", body: unknown = { query: "coffee beans", deliveryRegion: "Ukraine" }) {
   let statusCode = 0;
@@ -67,7 +67,8 @@ test("Responses API uses web search and structured output without Tavily", async
     assert.equal(JSON.stringify(payload).includes("Tavily"), false);
     const row = (result.responseBody as { results: Array<Record<string, unknown>> }).results[0];
     assert.equal("moq" in row, false);
-    assert.deepEqual(row.price, { displayValue: null, type: "unknown", sourceUrl: null });
+    assert.equal(row.price, null);
+    assert.equal(row.score, 0.9);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = originalKey;
@@ -75,23 +76,21 @@ test("Responses API uses web search and structured output without Tavily", async
 });
 
 test("normalization cannot turn unsupported delivery or buyer price limits into supplier facts", () => {
-  const [supplier] = normalizeOpenAISuppliers({ suppliers: [{
+  const suppliers = normalizeOpenAISuppliers({ suppliers: [{
     name: "Unverified Supplier", website: null, location: null,
     product: { displayValue: "Coffee", sourceUrl: null },
     delivery: { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: null, evidenceText: "Ships to Ukraine" },
     price: { displayValue: "$10 buyer maximum", type: "wholesale", sourceUrl: null, evidenceText: "Buyer maximum price $10" },
     sources: [],
   }] });
-  assert.deepEqual(supplier.delivery, { status: "not_confirmed", displayValue: null, sourceUrl: null });
-  assert.equal("moq" in supplier, false);
-  assert.deepEqual(supplier.price, { displayValue: null, type: "unknown", sourceUrl: null });
+  assert.deepEqual(suppliers, []);
 });
 
 function candidate(overrides: Record<string, unknown> = {}) {
   return {
     name: "Generic B2B Supplier", website: "https://supplier.example", location: "Ukraine",
     product: { displayValue: "Coffee beans", sourceUrl: "https://supplier.example/coffee" },
-    delivery: { status: "not_confirmed", displayValue: null, sourceUrl: null, evidenceText: null },
+    delivery: { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: "https://supplier.example/shipping", evidenceText: "We ship to Ukraine." },
     price: { displayValue: null, type: "unknown", sourceUrl: null, evidenceText: null },
     sources: [], ...overrides,
   };
@@ -110,22 +109,36 @@ test("listed starting price is not promoted to wholesale but an explicit wholesa
 });
 
 test("market presence and supplier location do not confirm delivery, but explicit shipping does", () => {
-  const [presence, shipping] = normalizeOpenAISuppliers({ suppliers: [
+  const [shipping] = normalizeOpenAISuppliers({ suppliers: [
     candidate({ delivery: { status: "confirmed", displayValue: "Ukraine market", sourceUrl: "https://supplier.example/about", evidenceText: "A Ukrainian supplier serving HoReCa customers in Ukraine." } }),
     candidate({ name: "Foreign Supplier", location: "Poland", delivery: { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: "https://supplier.example/shipping", evidenceText: "We ship wholesale orders to Ukraine." } }),
   ] }, "Ukraine");
 
-  assert.deepEqual(presence.delivery, { status: "not_confirmed", displayValue: null, sourceUrl: null });
   assert.deepEqual(shipping.delivery, { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: "https://supplier.example/shipping" });
 });
 
 test("buyer constraints and unrelated charges cannot become supplier price", () => {
   const [supplier] = normalizeOpenAISuppliers({ suppliers: [candidate({
+    delivery: { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: "https://supplier.example/shipping", evidenceText: "We ship to Ukraine." },
     price: { displayValue: "100 UAH", type: "listed", sourceUrl: "https://supplier.example/shipping", evidenceText: "Delivery cost: 100 UAH." },
   })] }, "Ukraine");
 
   assert.equal("moq" in supplier, false);
   assert.deepEqual(supplier.price, { displayValue: null, type: "unknown", sourceUrl: null });
+});
+
+test("production adapter preserves evidence and computes a dynamic Match score", () => {
+  const supplier = normalizeOpenAISuppliers({ suppliers: [candidate({
+    location: null,
+    delivery: { status: "confirmed", displayValue: "Ships to Ukraine", sourceUrl: "https://supplier.example/shipping", evidenceText: "We ship to Ukraine." },
+  })] }, "Ukraine")[0];
+  const result = toProductionSupplier(supplier, "Ukraine");
+  assert.equal(result.title, "Generic B2B Supplier");
+  assert.equal(result.product, "Coffee beans");
+  assert.equal(result.delivery.status, "confirmed");
+  assert.equal(result.delivery.region, "Ukraine");
+  assert.equal(result.score, 0.85);
+  assert.equal("moq" in result, false);
 });
 
 test("upstream failures are returned without secret-bearing details", async () => {
@@ -137,6 +150,21 @@ test("upstream failures are returned without secret-bearing details", async () =
     const result = await invoke();
     assert.equal(result.statusCode, 502);
     assert.equal(JSON.stringify(result.responseBody).includes("never-leak-this"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = originalKey;
+  }
+});
+
+test("malformed OpenAI output fails safely", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "openai-test-secret";
+  globalThis.fetch = async () => new Response(JSON.stringify({ output_text: "not json" }), { status: 200 });
+  try {
+    const result = await invoke();
+    assert.equal(result.statusCode, 502);
+    assert.deepEqual(result.responseBody, { error: "Supplier web search is temporarily unavailable." });
   } finally {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = originalKey;

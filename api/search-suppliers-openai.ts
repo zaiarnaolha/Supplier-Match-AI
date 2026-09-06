@@ -23,6 +23,24 @@ export interface OpenAISupplier {
   sources: string[];
 }
 
+export interface ProductionSupplier {
+  title: string;
+  url: string;
+  content: string;
+  score: number;
+  product: string;
+  country: null;
+  supplierLocation: string | null;
+  price: string | null;
+  delivery: {
+    region: string;
+    status: "confirmed";
+    evidence: string;
+    sourceUrl: string;
+    sourceType: "external";
+  };
+}
+
 const MODEL = "gpt-5-mini";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const PRICE_TYPES = new Set<PriceType>(["wholesale", "listed", "base", "negotiated", "unknown"]);
@@ -153,6 +171,8 @@ export function normalizeOpenAISuppliers(value: unknown, deliveryRegion = ""): O
     const deliveryEvidence = text(delivery.evidenceText);
     const hasDeliveryEvidence = deliverySource !== null && explicitlySupportsDelivery(deliveryEvidence, deliveryRegion);
 
+    if (!productSource || !text(product.displayValue) || !hasDeliveryEvidence) return [];
+
     return [{
       name,
       website,
@@ -171,6 +191,29 @@ export function normalizeOpenAISuppliers(value: unknown, deliveryRegion = ""): O
       sources,
     }];
   });
+}
+
+/** Keep the established /app contract while deriving Match only from verified evidence. */
+export function toProductionSupplier(supplier: OpenAISupplier, deliveryRegion: string): ProductionSupplier {
+  const url = supplier.website ?? supplier.product.sourceUrl ?? supplier.delivery.sourceUrl!;
+  const score = Math.min(100, 80 + (supplier.price.displayValue ? 10 : 0) + (supplier.website ? 5 : 0) + (supplier.location ? 5 : 0)) / 100;
+  return {
+    title: supplier.name,
+    url,
+    content: supplier.product.displayValue!,
+    score,
+    product: supplier.product.displayValue!,
+    country: null,
+    supplierLocation: supplier.location,
+    price: supplier.price.displayValue,
+    delivery: {
+      region: deliveryRegion,
+      status: "confirmed",
+      evidence: supplier.delivery.displayValue ?? "",
+      sourceUrl: supplier.delivery.sourceUrl!,
+      sourceType: "external",
+    },
+  };
 }
 
 function responseText(value: unknown): string | null {
@@ -241,7 +284,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const raw: unknown = await upstream.json();
     const output = responseText(raw);
     if (!output) throw new Error("OpenAI response had no output text");
-    const results = normalizeOpenAISuppliers(JSON.parse(output) as unknown, deliveryRegion);
+    const results = normalizeOpenAISuppliers(JSON.parse(output) as unknown, deliveryRegion)
+      .map(supplier => toProductionSupplier(supplier, deliveryRegion));
     response.status(200).json({ query, deliveryRegion, results });
   } catch {
     response.status(502).json({ error: "Supplier web search is temporarily unavailable." });
