@@ -44,6 +44,48 @@ test("Ukrainian nationwide delivery phrases confirm delivery", () => {
   }
 });
 
+test("delivery requires a local directional relation to the requested region", () => {
+  const ukrainianContext = { ...context, deliveryRegion: "Україна" };
+  for (const phrase of [
+    "Доставляємо по всій Україні",
+    "Доставка — Україна",
+    "Відправляємо Новою поштою по Україні",
+  ]) {
+    assert.equal(extractVerifiedEnrichment([result(`Кава в зернах. ${phrase}.`)], ukrainianContext).delivery.status, "confirmed", phrase);
+  }
+  assert.equal(extractVerifiedEnrichment([result("Whole bean coffee. Shipping to Poland.")], {
+    ...context, deliveryRegion: "Poland",
+  }).delivery.status, "confirmed");
+});
+
+test("supplier-wide delivery policy can accompany separate same-supplier product evidence", () => {
+  const enriched = extractVerifiedEnrichment([
+    result("Whole bean coffee for wholesale buyers."),
+    result("Shipping: Ukraine for all products and orders in our catalogue.", {
+      title: "Shipping policy", url: "https://exact-coffee.example/shipping",
+    }),
+  ], context);
+  assert.equal(enriched.product, "Кава в зернах");
+  assert.equal(enriched.delivery.status, "confirmed");
+});
+
+test("snippet-wide delivery and region co-occurrence is not delivery evidence", () => {
+  const ukrainianContext = { ...context, deliveryRegion: "Україна" };
+  for (const content of [
+    "Каталог | Доставка | Контакти ... імпортуємо в Україну",
+    "Каталог | Доставка | Контакти. Юридична адреса: Київ, Україна.",
+    "Кава в зернах. Компанія працює по всій Україні.",
+    "Кава в зернах\nДоставка\nАдреса: Київ, Україна",
+    "Кава в зернах. Імпортуємо в Україну. Доставка за тарифами.",
+  ]) {
+    assert.equal(extractVerifiedEnrichment([result(content)], ukrainianContext).delivery.status, "not_confirmed", content);
+  }
+});
+
+test("a negative delivery relation cannot become positive", () => {
+  assert.equal(extractVerifiedEnrichment([result("Whole bean coffee. We do not ship to Ukraine.")], context).delivery.status, "not_available");
+});
+
 test("a country mention without delivery context does not confirm delivery", () => {
   assert.equal(extractVerifiedEnrichment([result("Whole bean coffee roasted in Ukraine.")], context).delivery.status, "not_confirmed");
 });
