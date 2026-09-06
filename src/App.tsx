@@ -5,6 +5,7 @@ import { CompareScreen } from './pages/CompareScreen/CompareScreen';
 import { SupplierSearchPage, type SearchStage } from './pages/SupplierSearchPage/SupplierSearchPage';
 import { SupplierDetailsPage } from './pages/SupplierDetailsPage/SupplierDetailsPage';
 import { OpenAIPocPage } from './pages/OpenAIPocPage/OpenAIPocPage';
+import { OpenAIBatchedExperimentPage } from './pages/OpenAIBatchedExperimentPage/OpenAIBatchedExperimentPage';
 import type { Supplier } from './data/suppliers';
 
 export function App() {
@@ -25,6 +26,7 @@ export function App() {
     <Route path="/" element={<LandingPage />} />
     <Route path="/app" element={<SupplierSearchPage {...searchState} />} />
     <Route path="/openai-poc" element={<OpenAIPocPage />} />
+    <Route path="/openai-batched-experiment" element={<OpenAIBatchedExperimentPage />} />
     <Route path="/app/suppliers/:id" element={<SupplierDetailsPage suppliers={searchResults} />} />
     <Route path="/app/compare" element={selectedSuppliers.length >= 2
       ? <CompareScreen suppliers={searchResults} selectedSupplierNames={selectedSuppliers} setSelectedSupplierNames={setSelectedSuppliers} />
