@@ -226,9 +226,11 @@ export function extractPrice(title: string, content: string, product: ExtractedF
       if (candidate) findings.push(candidate);
     }
   }
-  // Multiple different prices on one snippet cannot safely be bound to the
-  // same requested variant (for example Arabica versus Robusta).
-  if (new Set(findings.map(candidate => candidate.decimalAmount)).size > 1) return null;
+  // Different unscoped labelled prices cannot safely be bound to the same
+  // requested variant (for example Arabica versus Robusta). Explicitly scoped
+  // observations can proceed to the semantic compatibility checks that follow.
+  if (new Set(findings.map(candidate => candidate.decimalAmount)).size > 1
+    && findings.some(candidate => candidate.commercialScope === "unspecified")) return null;
   return aggregatePriceCandidates(findings);
 }
 

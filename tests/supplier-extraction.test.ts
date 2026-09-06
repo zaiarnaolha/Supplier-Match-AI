@@ -86,6 +86,17 @@ test("distinguishes literal from and does not turn duplicate observations into c
   assert.equal(duplicate.value, "535 грн/кг");
 });
 
+test("computes from explicitly scoped compatible prices in one snippet", () => {
+  const product = extractProduct("Coffee beans", "", url);
+  const price = extractPrice("Coffee beans", [
+    "Wholesale price 616 UAH / 1 kg.",
+    "Wholesale price 660 UAH / 1 kg.",
+    "Wholesale price 704 UAH / 1 kg.",
+  ].join(" "), product, url)!;
+  assert.equal(price.value, "від 616 UAH / 1 kg");
+  assert.equal(priceCandidates(price).every(candidate => candidate.literalFrom === false), true);
+});
+
 test("rejects payment-like amounts including shipping fees and minimum order value", () => {
   const product = extractProduct("Coffee beans", "", url);
   for (const evidence of ["Shipping fee 40 UAH", "Coupon price 50 UAH", "Membership price 90 UAH", "Minimum order value 500 UAH"]) {
