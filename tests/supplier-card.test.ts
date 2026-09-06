@@ -24,3 +24,26 @@ test("public supplier criteria omit MOQ across cards, compare, and details data"
   assert.doesNotMatch(comparePage, /['"]MOQ['"]/);
   assert.doesNotMatch(supplierData, /label: ['"]MOQ['"]/);
 });
+
+test("SupplierSearchPage omits desktop and mobile supplier filter controls", async () => {
+  const source = await readFile(new URL("../src/pages/SupplierSearchPage/SupplierSearchPage.tsx", import.meta.url), "utf8");
+
+  assert.doesNotMatch(source, /function Filters|styles\.(?:filters|mobileFilters|filterFields|clearFilters)/);
+  assert.doesNotMatch(source, /Категорія|Країна \/ регіон|Очистити фільтри|SlidersHorizontal/);
+  assert.doesNotMatch(source, /До 300 грн\/кг|До 500 грн\/кг|label: ['"]MOQ['"]|result\.moq/);
+});
+
+test("search request, result mapping, supplier cards, and compare flow remain connected", async () => {
+  const source = await readFile(new URL("../src/pages/SupplierSearchPage/SupplierSearchPage.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /buildSupplierSearchRequest\(query, region\)/);
+  assert.match(source, /body: JSON\.stringify\(requestBody\)/);
+  assert.match(source, /setSearchResults\(results\.map\(mapSearchResult\)\)/);
+  assert.match(source, /result\.delivery\.status === 'confirmed'/);
+  assert.match(source, /label: 'Ціна', value: result\.price/);
+  assert.match(source, /searchResults\.map\(supplier => <SupplierCard/);
+  assert.match(source, /selectedSuppliers\.length >= 3/);
+  assert.match(source, /selectedSuppliers\.length >= 2/);
+  assert.match(source, /navigate\('\/app\/compare'\)/);
+  assert.match(source, /navigate\(`\/app\/suppliers\/\$\{supplier\.id\}`\)/);
+});
