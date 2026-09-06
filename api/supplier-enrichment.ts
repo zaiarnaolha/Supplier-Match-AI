@@ -1,4 +1,7 @@
-import { extractMoq, extractPrice, extractProduct, type ExtractedField } from "./supplier-extraction";
+import {
+  aggregatePriceCandidates, extractMoq, extractPrice, extractProduct, priceCandidates, PRICE_CANDIDATES,
+  type ExtractedField, type PriceCandidate,
+} from "./supplier-extraction";
 import { canonicalSupplierDomain, identifySupplier, sourceTypeForUrl } from "./supplier-identity";
 
 export type DeliveryStatus = "confirmed" | "not_confirmed" | "not_available";
@@ -19,6 +22,7 @@ export interface EnrichmentResult {
   price: string | null;
   supplierLocation: string | null;
   delivery: DeliveryVerification;
+  [PRICE_CANDIDATES]?: PriceCandidate[];
 }
 
 export interface EnrichmentSearchResult {
@@ -158,6 +162,11 @@ function oneValue(fields: SourcedField[]): SourcedField {
   return values.size === 1 ? [...values.values()][0] : null;
 }
 
+function withPriceCandidates(result: EnrichmentResult, candidates: PriceCandidate[]): EnrichmentResult {
+  if (candidates.length) Object.defineProperty(result, PRICE_CANDIDATES, { value: candidates, enumerable: true });
+  return result;
+}
+
 function diagnosticEvaluation(
   result: EnrichmentSearchResult,
   context: { supplierName: string; supplierHostname: string; deliveryRegion: string; sourceType: EvidenceSource },
@@ -265,10 +274,12 @@ export function extractVerifiedEnrichment(
   const decisive = hasPositive !== hasNegative ? deliverySignals.find(signal => signal.negative === hasNegative) : undefined;
   const status: DeliveryStatus = hasPositive && !hasNegative ? "confirmed"
     : hasNegative && !hasPositive ? "not_available" : "not_confirmed";
-  return {
+  const candidates = priceFields.flatMap(field => priceCandidates(field));
+  const aggregatedPrice = aggregatePriceCandidates(candidates);
+  return withPriceCandidates({
     product: oneValue(productFields)?.value ?? null,
     moq: oneValue(moqFields)?.value ?? null,
-    price: oneValue(priceFields)?.value ?? null,
+    price: aggregatedPrice?.value ?? null,
     supplierLocation: oneValue(locationFields)?.value ?? null,
     delivery: {
       region: context.deliveryRegion,
@@ -281,7 +292,7 @@ export function extractVerifiedEnrichment(
           : context.sourceType
       } : {}),
     },
-  };
+  }, candidates);
 }
 
 export function mergeEnrichment(primary: EnrichmentResult, secondary?: EnrichmentResult): EnrichmentResult {
@@ -290,13 +301,15 @@ export function mergeEnrichment(primary: EnrichmentResult, secondary?: Enrichmen
   const delivery = statuses.size > 1
     ? { region: primary.delivery.region, status: "not_confirmed" as const, evidence: null, sourceUrl: null, sourceType: null }
     : primary.delivery.status !== "not_confirmed" ? primary.delivery : secondary.delivery;
-  return {
+  const candidates = [...(primary[PRICE_CANDIDATES] ?? []), ...(secondary[PRICE_CANDIDATES] ?? [])];
+  const price = aggregatePriceCandidates(candidates);
+  return withPriceCandidates({
     product: primary.product ?? secondary.product,
     moq: primary.moq ?? secondary.moq,
-    price: primary.price ?? secondary.price,
+    price: price?.value ?? null,
     supplierLocation: primary.supplierLocation ?? secondary.supplierLocation,
     delivery,
-  };
+  }, candidates);
 }
 
 export async function enrichSupplier(

@@ -7,6 +7,7 @@ import {
   rankAndFilterByDelivery,
   type EnrichmentSearchResult,
 } from "../api/supplier-enrichment.ts";
+import { PRICE_CANDIDATES } from "../api/supplier-extraction.ts";
 
 const context = {
   supplierName: "Exact Coffee",
@@ -161,6 +162,45 @@ test("MOQ and concrete price require explicit evidence on a product-relevant res
   assert.equal(enriched.product, "Кава в зернах");
   assert.equal(enriched.moq, "20 кг");
   assert.equal(enriched.price, "618 ₴/кг");
+});
+
+test("computes from only across distinct comparable exact observations", () => {
+  const enriched = extractVerifiedEnrichment([
+    result("Whole bean coffee. Price 620 UAH/kg."),
+    result("Whole bean coffee. Price 580 UAH / 1 kg.", { url: "https://exact-coffee.example/beans-2" }),
+    result("Whole bean coffee. Price 620 UAH/kg.", { url: "https://exact-coffee.example/duplicate" }),
+  ], context);
+  assert.equal(enriched.price, "від 580 UAH / 1 kg");
+});
+
+test("incompatible currency, basis, or commercial scope never fabricates an aggregate", () => {
+  const cases = [
+    ["Price 600 UAH/kg.", "Price $20/kg."],
+    ["Price 600 UAH/kg.", "Price 500 UAH/шт."],
+    ["Wholesale price 600 UAH/kg.", "Retail price 700 UAH/kg."],
+  ];
+  for (const [first, second] of cases) {
+    const enriched = extractVerifiedEnrichment([
+      result(`Whole bean coffee. ${first}`),
+      result(`Whole bean coffee. ${second}`, { url: "https://exact-coffee.example/second" }),
+    ], context);
+    assert.equal(enriched.price, null, `${first} + ${second}`);
+  }
+});
+
+test("structured observations survive result spread and enrichment merge but not public serialization", () => {
+  const primary = extractVerifiedEnrichment([result("Whole bean coffee. Price 620 UAH/kg.")], context);
+  const copied = { ...primary };
+  assert.equal(copied.price, "620 UAH/kg");
+  assert.equal(copied[PRICE_CANDIDATES]?.length, 1);
+  assert.equal(Object.keys(copied).includes(String(PRICE_CANDIDATES)), false);
+  assert.doesNotMatch(JSON.stringify(copied), /decimalAmount|supplierPriceCandidates/);
+  const secondary = extractVerifiedEnrichment([
+    result("Whole bean coffee. Price 580 UAH / 1 kg.", { url: "https://exact-coffee.example/second" }),
+  ], context);
+  const merged = mergeEnrichment(copied, secondary);
+  assert.equal(merged.price, "від 580 UAH / 1 kg");
+  assert.equal(merged[PRICE_CANDIDATES]?.length, 2);
 });
 
 test("identity-bound product-relevant discovery evidence contributes MOQ and price", async () => {
