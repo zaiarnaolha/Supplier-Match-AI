@@ -18,19 +18,16 @@ function Filters() {
   const [category, setCategory] = useState('coffee');
   const [region, setRegion] = useState('ukraine');
   const [price, setPrice] = useState('any');
-  const [moq, setMoq] = useState('any');
   function clearFilters() {
     setCategory('coffee');
     setRegion('ukraine');
     setPrice('any');
-    setMoq('any');
   }
 
   return <div className={styles.filterFields}>
     <label><span>Категорія</span><Select value={category} onValueChange={setCategory}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="coffee">Кава</SelectItem><SelectItem value="grocery">Бакалія</SelectItem></SelectContent></Select></label>
     <label><span>Країна / регіон</span><Select value={region} onValueChange={setRegion}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ukraine">Україна</SelectItem><SelectItem value="europe">Європа</SelectItem></SelectContent></Select></label>
     <label><span>Ціна</span><Select value={price} onValueChange={setPrice}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Будь-яка</SelectItem><SelectItem value="300">До 300 грн/кг</SelectItem><SelectItem value="500">До 500 грн/кг</SelectItem></SelectContent></Select></label>
-    <label><span>MOQ</span><Select value={moq} onValueChange={setMoq}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="any">Будь-яке</SelectItem><SelectItem value="10">До 10 кг</SelectItem><SelectItem value="50">До 50 кг</SelectItem></SelectContent></Select></label>
     <Button className={styles.clearFilters} variant="outline" size="sm" type="button" onClick={clearFilters}><RotateCcw size={14} />Очистити фільтри</Button>
   </div>;
 }
@@ -81,7 +78,6 @@ type SearchResult = {
   product: string | null;
   country: string | null;
   supplierLocation: string | null;
-  moq: string | null;
   price: string | null;
   delivery: {
     region: string;
@@ -103,7 +99,6 @@ function isSearchResult(value: unknown): value is SearchResult {
     && (typeof result.product === 'string' || result.product === null)
     && (typeof result.country === 'string' || result.country === null)
     && (typeof result.supplierLocation === 'string' || result.supplierLocation === null)
-    && (typeof result.moq === 'string' || result.moq === null)
     && (typeof result.price === 'string' || result.price === null)
     && result.delivery !== null
     && typeof result.delivery === 'object'
@@ -143,7 +138,6 @@ function mapSearchResult(result: SearchResult, index: number): Supplier {
         value: result.delivery.status === 'confirmed' ? result.delivery.region : `Не підтверджено для ${result.delivery.region}`,
         status: result.delivery.status === 'confirmed' ? 'Відповідає' as const : 'Немає даних' as const,
       },
-      { label: 'MOQ', value: result.moq ?? 'Не вказано', status: result.moq ? 'Відповідає' as const : 'Немає даних' as const },
       { label: 'Ціна', value: result.price ?? 'Не вказано', status: result.price ? 'Відповідає' as const : 'Немає даних' as const },
     ],
   };

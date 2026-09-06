@@ -21,4 +21,5 @@ test('OpenAI POC exposes input, loading, error, and structured output states', a
   assert.match(page, /Searching…/);
   assert.match(page, /role="alert"/);
   assert.match(page, /JSON\.stringify\(result, null, 2\)/);
+  assert.doesNotMatch(page, /MOQ|minimum order/i);
 });

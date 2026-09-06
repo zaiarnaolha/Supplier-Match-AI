@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react';
 import styles from './OpenAIPocPage.module.css';
 
-const DEFAULT_QUERY = "Шукаю постачальника кави в зернах в Україні для невеликої кав'ярні, MOQ до 20 кг";
+const DEFAULT_QUERY = "Шукаю постачальника кави в зернах в Україні для невеликої кав'ярні";
 const DEFAULT_REGION = 'Україна';
 
 export function OpenAIPocPage() {
