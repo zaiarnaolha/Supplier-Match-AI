@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { extractCountry, extractMoq, extractPrice, extractProduct, extractSupplierFields } from "../api/supplier-extraction.ts";
+import { extractCountry, extractMoq, extractPrice, extractProduct, extractSupplierFields, priceCandidates } from "../api/supplier-extraction.ts";
 import { tavilySnippets } from "./fixtures/tavily-snippets.ts";
 
 const url = "https://supplier.example.com/catalog/coffee";
@@ -62,6 +62,35 @@ test("extracts explicit product price with currency and unit", () => {
   const product = extractProduct(fixture.title, fixture.content, fixture.url);
   assert.equal(extractPrice(fixture.title, fixture.content, product, fixture.url)?.value, "320 грн/кг");
   assert.equal(extractPrice("Coffee beans", "Wholesale price $10/kg", product, url)?.value, "$10/kg");
+});
+
+test("retains exact structured price evidence without exposing it publicly", () => {
+  const product = extractProduct("Coffee beans", "", url);
+  const exact = extractPrice("Coffee beans", "Price 616 UAH / 1 kg", product, url)!;
+  assert.equal(exact.value, "616 UAH / 1 kg");
+  assert.deepEqual(priceCandidates(exact).map(({ decimalAmount, currency, basis, literalFrom }) => ({ decimalAmount, currency, basis, literalFrom })), [
+    { decimalAmount: "616", currency: "UAH", basis: "per_kg", literalFrom: false },
+  ]);
+  const copied = { ...exact };
+  assert.equal(priceCandidates(copied).length, 1);
+  assert.deepEqual(Object.keys(exact), ["value", "evidence", "confidence"]);
+  assert.doesNotMatch(JSON.stringify(exact), /decimalAmount|supplierPriceCandidates/);
+});
+
+test("distinguishes literal from and does not turn duplicate observations into computed from", () => {
+  const product = extractProduct("Кава в зернах", "", url);
+  const literal = extractPrice("Кава в зернах", "Ціна від 535 грн/кг", product, url)!;
+  assert.equal(literal.value, "від 535 грн/кг");
+  assert.equal(priceCandidates(literal)[0].literalFrom, true);
+  const duplicate = extractPrice("Кава в зернах", "Ціна 535 грн/кг. Ціна 535 грн/кг.", product, url)!;
+  assert.equal(duplicate.value, "535 грн/кг");
+});
+
+test("rejects payment-like amounts including shipping fees and minimum order value", () => {
+  const product = extractProduct("Coffee beans", "", url);
+  for (const evidence of ["Shipping fee 40 UAH", "Coupon price 50 UAH", "Membership price 90 UAH", "Minimum order value 500 UAH"]) {
+    assert.equal(extractPrice("Coffee beans", evidence, product, url), null, evidence);
+  }
 });
 
 test("extracts Ukrainian product-local prices without requiring a price label", () => {
