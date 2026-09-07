@@ -60,6 +60,8 @@ function textOf(result: EnrichmentSearchResult): string {
 
 function productEvidence(result: EnrichmentSearchResult): ExtractedField {
   const product = extractProduct(result.title, result.content, result.url);
+  // Search snippets can contain navigation/footer text for other catalogue items.
+  // An explicitly different product in the page title wins over such incidental text.
   return product && OTHER_PRODUCT_TITLE.test(result.title)
     && !extractProduct(result.title, "", result.url) ? null : product;
 }
@@ -250,6 +252,7 @@ export function extractVerifiedEnrichment(
   for (const result of eligible) {
     const product = productEvidence(result);
     if (product) productFields.push({ ...product, sourceUrl: result.url, sourceType: context.sourceType });
+    // MOQ and price require product evidence in this exact result, avoiding values for another product.
     if (product) {
       const moq = extractMoq(result.title, result.content);
       const price = extractPrice(result.title, result.content, product, result.url);
@@ -372,6 +375,8 @@ export async function enrichSupplier(
       externalQuery,
       { maxResults: 5 },
     );
+    // Fact completion enriches only the current, already-resolved supplier. It is
+    // not another discovery or promotion pass.
     if (!factCompletion) observeEvidence?.(externalResults);
     const external = extractVerifiedEnrichment(externalResults, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external" });
     diagnostics?.("external", {
