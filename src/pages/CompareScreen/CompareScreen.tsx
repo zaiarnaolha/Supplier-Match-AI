@@ -16,7 +16,7 @@ type CompareScreenProps = {
   setSelectedSupplierNames: Dispatch<SetStateAction<string[]>>;
 };
 
-const criteriaLabels = ['Товар', 'Регіон доставки', 'MOQ', 'Ціна'];
+const criteriaLabels = ['Товар', 'Регіон доставки', 'Ціна'];
 
 function scoreOf(supplier: Supplier) {
   return `${supplier.match.split('%')[0]}%`;
