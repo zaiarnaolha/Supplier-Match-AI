@@ -60,8 +60,6 @@ function textOf(result: EnrichmentSearchResult): string {
 
 function productEvidence(result: EnrichmentSearchResult): ExtractedField {
   const product = extractProduct(result.title, result.content, result.url);
-  // Search snippets can contain navigation/footer text for other catalogue items.
-  // An explicitly different product in the page title wins over such incidental text.
   return product && OTHER_PRODUCT_TITLE.test(result.title)
     && !extractProduct(result.title, "", result.url) ? null : product;
 }
@@ -252,7 +250,6 @@ export function extractVerifiedEnrichment(
   for (const result of eligible) {
     const product = productEvidence(result);
     if (product) productFields.push({ ...product, sourceUrl: result.url, sourceType: context.sourceType });
-    // MOQ and price require product evidence in this exact result, avoiding values for another product.
     if (product) {
       const moq = extractMoq(result.title, result.content);
       const price = extractPrice(result.title, result.content, product, result.url);
@@ -318,7 +315,6 @@ export async function enrichSupplier(
   deliveryRegion: string,
   search: EnrichmentSearch,
   diagnostics?: EnrichmentDiagnostics,
-  requestedMaxMoq: string | null = null,
   observeEvidence?: (results: EnrichmentSearchResult[]) => void,
 ): Promise<EnrichmentResult> {
   const supplierHostname = supplier.domain
@@ -339,8 +335,7 @@ export async function enrichSupplier(
   });
   const discoveredEvidence = mergeEnrichment(mergeEnrichment(discoveredOfficial, discoveredMarketplace), discoveredExternal);
   let official = empty;
-  const moqRequirement = requestedMaxMoq ? `buyer maximum MOQ ${requestedMaxMoq}` : "";
-  const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price ${moqRequirement} delivery shipping ${deliveryRegion} company legal address`.replace(/\s+/g, " ").trim();
+  const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price delivery shipping ${deliveryRegion} company legal address`.replace(/\s+/g, " ").trim();
   try {
     if (!supplierHostname) throw new Error("supplier official domain is unknown");
     const results = await search(
@@ -364,22 +359,19 @@ export async function enrichSupplier(
 
   const collected = mergeEnrichment(discoveredEvidence, official);
   if (collected.delivery.status === "not_available"
-    || (collected.delivery.status === "confirmed" && collected.moq && collected.price)) return collected;
+    || (collected.delivery.status === "confirmed" && collected.price)) return collected;
   const missingFactTerms = [
-    !collected.moq ? "MOQ minimum order wholesale order" : "",
     !collected.price ? "price wholesale price product price" : "",
   ].filter(Boolean).join(" ");
   const factCompletion = collected.delivery.status === "confirmed";
   const externalQuery = factCompletion
     ? `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${missingFactTerms}`.replace(/\s+/g, " ").trim()
-    : `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${moqRequirement} ${deliveryRegion} shipping delivery wholesale distributor`.replace(/\s+/g, " ").trim();
+    : `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${deliveryRegion} shipping delivery wholesale distributor`.replace(/\s+/g, " ").trim();
   try {
     const externalResults = await search(
       externalQuery,
       { maxResults: 5 },
     );
-    // Fact completion enriches only the current, already-resolved supplier. It is
-    // not another discovery or promotion pass.
     if (!factCompletion) observeEvidence?.(externalResults);
     const external = extractVerifiedEnrichment(externalResults, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external" });
     diagnostics?.("external", {
