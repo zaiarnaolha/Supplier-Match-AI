@@ -4,11 +4,10 @@ import { buildSupplierSearchRequest, deriveSupplierSearchCriteria } from "../sha
 
 const controlQuery = "Шукаю постачальника кави в зернах в Україні для невеликої кав'ярні, MOQ до 20 кг";
 
-test("control scenario becomes structured user criteria without hardcoding the whole query", () => {
+test("MOQ wording is ignored while product and delivery remain structured", () => {
   assert.deepEqual(deriveSupplierSearchCriteria(controlQuery), {
     product: "Кава в зернах",
     deliveryRegion: "Україна",
-    maxMoq: { value: 20, unit: "кг", displayValue: "до 20 кг" },
   });
 });
 
@@ -19,7 +18,6 @@ test("frontend request carries normalized criteria and selected region labels", 
     criteria: {
       product: "Кава в зернах",
       deliveryRegion: "Україна",
-      maxMoq: { value: 20, unit: "кг", displayValue: "до 20 кг" },
     },
   });
   assert.equal(buildSupplierSearchRequest("Кава в зернах", "ukraine").deliveryRegion, "Україна");
