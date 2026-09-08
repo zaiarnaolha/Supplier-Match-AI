@@ -1,5 +1,11 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut,
+} from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js';
 import { getFirestore } from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -12,10 +18,17 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const googleAuthProvider = new GoogleAuthProvider();
+const db = getFirestore(app);
 
 window.supplierMatchFirebase = {
   app,
-  auth: getAuth(app),
-  googleAuthProvider: new GoogleAuthProvider(),
-  db: getFirestore(app),
+  auth,
+  db,
+  signInWithGoogle: () => signInWithPopup(auth, googleAuthProvider),
+  subscribeToAuth: (callback) => onAuthStateChanged(auth, callback),
+  signOutUser: () => signOut(auth),
 };
+
+window.dispatchEvent(new Event('supplier-match-firebase-ready'));
