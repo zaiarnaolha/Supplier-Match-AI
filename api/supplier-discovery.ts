@@ -119,6 +119,22 @@ export function resolveSupplierIdentities(evidence: DiscoveryEvidence[]): { supp
   return { suppliers, resolutions };
 }
 
+function normalizedProductText(value: string): string {
+  return value.toLocaleLowerCase().replace(/[’`]/g, "'").replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
+}
+
+function requestedProductPresent(title: string, content: string, requestedProduct: string): boolean {
+  const requested = normalizedProductText(requestedProduct);
+  if (!requested) return false;
+  const text = ` ${normalizedProductText(`${title} ${content}`)} `;
+  return text.includes(` ${requested} `);
+}
+
 export function evidenceProduct(evidence: DiscoveryEvidence[], requestedProduct: string): string | null {
-  return evidence.some(item => extractProduct(item.title, item.content, item.url)?.value === requestedProduct) ? requestedProduct : null;
+  const requestedCanonical = extractProduct(requestedProduct, "", "")?.value;
+  return evidence.some(item => {
+    const extracted = extractProduct(item.title, item.content, item.url)?.value;
+    if (requestedCanonical && extracted === requestedCanonical) return true;
+    return requestedProductPresent(item.title, item.content, requestedProduct);
+  }) ? requestedProduct : null;
 }
