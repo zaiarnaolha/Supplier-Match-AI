@@ -99,6 +99,13 @@ async function listSearches() {
   return snapshot.docs.map((searchDoc) => ({ id: searchDoc.id, ...searchDoc.data() }));
 }
 
+onAuthStateChanged(auth, (user) => {
+  if (!user) return;
+  void ensureUser(user).catch((error) => {
+    console.warn('Firestore restored-session sync failed', error);
+  });
+});
+
 window.supplierMatchFirebase = {
   app,
   auth,
