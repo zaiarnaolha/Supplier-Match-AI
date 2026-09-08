@@ -203,6 +203,21 @@ export function SupplierSearchPage({ query, setQuery, stage, setStage, deliveryR
       setSelectedSuppliers([]);
       setShowCompareLimit(false);
       setStage('search-ready');
+
+      const firebase = window.supplierMatchFirebase;
+      if (firebase) {
+        void (async () => {
+          try {
+            const searchId = await firebase.startSearch({
+              query: requestBody.query,
+              criteria: { ...requestBody.criteria },
+            });
+            if (searchId) await firebase.completeSearch(searchId, results);
+          } catch (error) {
+            console.warn('Firestore search persistence failed', error);
+          }
+        })();
+      }
     } catch (error) {
       if (controller.signal.aborted) return;
       setSearchResults([]);
