@@ -59,7 +59,6 @@ const LOCATION_VALUE = /(?:[\p{L}.'’ -]+,\s*)?(?:ukraine|україна|poland
 const CHROME_GARBAGE = /(?:карта\s+сайту|site\s*map|breadcrumbs?|меню|menu|контакти\s+м|©|privacy|політика)/iu;
 const MARKETPLACE_NETWORK = /(?:доставк\p{L}*\s+(?:rozetka|розетка)|(?:rozetka|розетка)\s+доставк\p{L}*|marketplace\s+delivery\s+network|доступн\p{L}*\s+(?:для\s+замовлення\s+)?(?:з|із)\s+доставк\p{L}*|nationwide\s+(?:marketplace\s+)?delivery)/iu;
 const CATALOGUE_WIDE_DELIVERY = /(?:ус(?:і|ю)\s+(?:товари|продукці\p{L}*|замовлення)|весь\s+(?:каталог|асортимент)|для\s+(?:всіх|усіх)\s+(?:товарів|замовлень)|all\s+(?:products|catalog(?:ue)?\s+items|orders)|entire\s+(?:catalog(?:ue)?|range)|catalog(?:ue)?-wide)[^.!?]{0,90}(?:достав|ship)|(?:достав|ship)[^.!?]{0,90}(?:ус(?:і|ю)\s+(?:товари|продукці\p{L}*|замовлення)|весь\s+(?:каталог|асортимент)|для\s+(?:всіх|усіх)\s+(?:товарів|замовлень)|all\s+(?:products|catalog(?:ue)?\s+items|orders)|entire\s+(?:catalog(?:ue)?|range)|catalog(?:ue)?-wide)/iu;
-const OTHER_PRODUCT_TITLE = /(?:офісн\p{L}*\s+папір|office\s+paper|мий(?:ний|ні)\s+засіб|пральн\p{L}*\s+порошок|detergent|\btea\b|\bчай\b)/iu;
 const PRODUCT_CONTEXT_WORD = /(?:product|products|товар\p{L}*|продукці\p{L}*|catalog|catalogue|каталог|assortment|асортимент|wholesale|b2b|опт\p{L}*|гурт\p{L}*|supplier|постачальник\p{L}*|manufacturer|виробник\p{L}*|price|ціна)/iu;
 
 function textOf(result: EnrichmentSearchResult): string {
@@ -81,9 +80,7 @@ function productEvidence(result: EnrichmentSearchResult, requestedProduct?: stri
   const effectiveRequestedProduct = requestedProduct?.trim() || "Кава в зернах";
   const requestedCanonical = extractProduct(effectiveRequestedProduct, "", "")?.value;
   const extracted = extractProduct(result.title, result.content, result.url);
-  if (requestedCanonical && extracted?.value === requestedCanonical) {
-    return OTHER_PRODUCT_TITLE.test(result.title) && !extractProduct(result.title, "", result.url) ? null : extracted;
-  }
+  if (requestedCanonical && extracted?.value === requestedCanonical) return extracted;
 
   if (exactProductPhrasePresent(result.title, effectiveRequestedProduct)) {
     return { value: effectiveRequestedProduct, evidence: `title: ${effectiveRequestedProduct}`, confidence: "high" };
