@@ -1,6 +1,6 @@
 import {
-  aggregateMoqCandidates, aggregatePriceCandidates, extractMoq, extractPrice, extractProduct, moqCandidates, MOQ_CANDIDATES,
-  priceCandidates, PRICE_CANDIDATES, type ExtractedField, type MoqCandidate, type PriceCandidate,
+  aggregatePriceCandidates, extractMoq, extractPrice, extractProduct, priceCandidates, PRICE_CANDIDATES,
+  type ExtractedField, type PriceCandidate,
 } from "./supplier-extraction";
 import { canonicalSupplierDomain, identifySupplier, sourceTypeForUrl } from "./supplier-identity";
 
@@ -23,7 +23,6 @@ export interface EnrichmentResult {
   supplierLocation: string | null;
   delivery: DeliveryVerification;
   [PRICE_CANDIDATES]?: PriceCandidate[];
-  [MOQ_CANDIDATES]?: MoqCandidate[];
 }
 
 export interface EnrichmentSearchResult {
@@ -168,11 +167,6 @@ function withPriceCandidates(result: EnrichmentResult, candidates: PriceCandidat
   return result;
 }
 
-function withMoqCandidates(result: EnrichmentResult, candidates: MoqCandidate[]): EnrichmentResult {
-  if (candidates.length) Object.defineProperty(result, MOQ_CANDIDATES, { value: candidates, enumerable: true });
-  return result;
-}
-
 function diagnosticEvaluation(
   result: EnrichmentSearchResult,
   context: { supplierName: string; supplierHostname: string; deliveryRegion: string; sourceType: EvidenceSource },
@@ -282,11 +276,9 @@ export function extractVerifiedEnrichment(
     : hasNegative && !hasPositive ? "not_available" : "not_confirmed";
   const candidates = priceFields.flatMap(field => priceCandidates(field));
   const aggregatedPrice = aggregatePriceCandidates(candidates);
-  const moqObservations = moqFields.flatMap(field => moqCandidates(field));
-  const aggregatedMoq = aggregateMoqCandidates(moqObservations);
-  return withMoqCandidates(withPriceCandidates({
+  return withPriceCandidates({
     product: oneValue(productFields)?.value ?? null,
-    moq: aggregatedMoq?.value ?? null,
+    moq: oneValue(moqFields)?.value ?? null,
     price: aggregatedPrice?.value ?? null,
     supplierLocation: oneValue(locationFields)?.value ?? null,
     delivery: {
@@ -300,7 +292,7 @@ export function extractVerifiedEnrichment(
           : context.sourceType
       } : {}),
     },
-  }, candidates), moqObservations);
+  }, candidates);
 }
 
 export function mergeEnrichment(primary: EnrichmentResult, secondary?: EnrichmentResult): EnrichmentResult {
@@ -311,15 +303,13 @@ export function mergeEnrichment(primary: EnrichmentResult, secondary?: Enrichmen
     : primary.delivery.status !== "not_confirmed" ? primary.delivery : secondary.delivery;
   const candidates = [...(primary[PRICE_CANDIDATES] ?? []), ...(secondary[PRICE_CANDIDATES] ?? [])];
   const price = aggregatePriceCandidates(candidates);
-  const moqObservations = [...(primary[MOQ_CANDIDATES] ?? []), ...(secondary[MOQ_CANDIDATES] ?? [])];
-  const moq = aggregateMoqCandidates(moqObservations);
-  return withMoqCandidates(withPriceCandidates({
+  return withPriceCandidates({
     product: primary.product ?? secondary.product,
-    moq: moqObservations.length ? moq?.value ?? null : primary.moq ?? secondary.moq,
+    moq: primary.moq ?? secondary.moq,
     price: price?.value ?? null,
     supplierLocation: primary.supplierLocation ?? secondary.supplierLocation,
     delivery,
-  }, candidates), moqObservations);
+  }, candidates);
 }
 
 export async function enrichSupplier(
@@ -328,6 +318,7 @@ export async function enrichSupplier(
   deliveryRegion: string,
   search: EnrichmentSearch,
   diagnostics?: EnrichmentDiagnostics,
+  requestedMaxMoq: string | null = null,
   observeEvidence?: (results: EnrichmentSearchResult[]) => void,
 ): Promise<EnrichmentResult> {
   const supplierHostname = supplier.domain
@@ -348,7 +339,8 @@ export async function enrichSupplier(
   });
   const discoveredEvidence = mergeEnrichment(mergeEnrichment(discoveredOfficial, discoveredMarketplace), discoveredExternal);
   let official = empty;
-  const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price delivery shipping ${deliveryRegion} company legal address`.replace(/\s+/g, " ").trim();
+  const moqRequirement = requestedMaxMoq ? `buyer maximum MOQ ${requestedMaxMoq}` : "";
+  const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price ${moqRequirement} delivery shipping ${deliveryRegion} company legal address`.replace(/\s+/g, " ").trim();
   try {
     if (!supplierHostname) throw new Error("supplier official domain is unknown");
     const results = await search(
@@ -372,14 +364,15 @@ export async function enrichSupplier(
 
   const collected = mergeEnrichment(discoveredEvidence, official);
   if (collected.delivery.status === "not_available"
-    || (collected.delivery.status === "confirmed" && collected.price)) return collected;
+    || (collected.delivery.status === "confirmed" && collected.moq && collected.price)) return collected;
   const missingFactTerms = [
+    !collected.moq ? "MOQ minimum order wholesale order" : "",
     !collected.price ? "price wholesale price product price" : "",
   ].filter(Boolean).join(" ");
   const factCompletion = collected.delivery.status === "confirmed";
   const externalQuery = factCompletion
     ? `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${missingFactTerms}`.replace(/\s+/g, " ").trim()
-    : `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${deliveryRegion} shipping delivery wholesale distributor`.replace(/\s+/g, " ").trim();
+    : `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${moqRequirement} ${deliveryRegion} shipping delivery wholesale distributor`.replace(/\s+/g, " ").trim();
   try {
     const externalResults = await search(
       externalQuery,

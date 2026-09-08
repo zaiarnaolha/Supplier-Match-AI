@@ -161,7 +161,7 @@ test("diagnostics are env-gated, structured, bounded, and absent from the API re
   }
 });
 
-test("MOQ wording is not structured or added to enrichment queries", async () => {
+test("control criteria reach backend and target both enrichment queries without becoming supplier facts", async () => {
   const query = "Шукаю постачальника кави в зернах в Україні для невеликої кав'ярні, MOQ до 20 кг";
   const originalFetch = globalThis.fetch;
   const originalLog = console.log;
@@ -194,18 +194,17 @@ test("MOQ wording is not structured or added to enrichment queries", async () =>
     assert.match(calls[0].query ?? "", /^Кава в зернах /);
     assert.match(calls[0].query ?? "", /deliver to Україна; supplier location may be any country/iu);
     assert.doesNotMatch(calls[0].query ?? "", /20 кг/iu);
-    assert.doesNotMatch(calls[3].query ?? "", /buyer maximum|до 20 кг/);
+    assert.match(calls[3].query ?? "", /buyer maximum MOQ до 20 кг/);
     assert.match(calls[3].query ?? "", /delivery shipping Україна/);
-    assert.doesNotMatch(calls[4].query ?? "", /buyer maximum|до 20 кг/);
-    assert.equal(calls[3].query, "Кава в зернах wholesale B2B catalog MOQ minimum order price delivery shipping Україна company legal address");
-    assert.equal(calls[4].query, "\"Exact Coffee\" \"exact-coffee.example\" Кава в зернах Україна shipping delivery wholesale distributor");
+    assert.match(calls[4].query ?? "", /до 20 кг Україна shipping delivery/);
+    assert.equal(calls[3].query, "Кава в зернах wholesale B2B catalog MOQ minimum order price buyer maximum MOQ до 20 кг delivery shipping Україна company legal address");
+    assert.equal(calls[4].query, "\"Exact Coffee\" \"exact-coffee.example\" Кава в зернах buyer maximum MOQ до 20 кг Україна shipping delivery wholesale distributor");
     assert.equal(response.responseBody.results.length, 1);
-    assert.equal("moq" in response.responseBody.results[0], false, "public results must not expose MOQ");
+    assert.equal(response.responseBody.results[0].moq, null, "requested MOQ must not become supplier MOQ");
     assert.equal(response.responseBody.results[0].supplierLocation, null, "delivery region must not become supplier location");
     assert.equal((response.responseBody.results[0].delivery as { status: string }).status, "confirmed");
     const primaryLog = logs.find(line => line.startsWith("[SUPPLIER_DIAGNOSTICS][PRIMARY]")) ?? "";
-    assert.match(primaryLog, /"criteria":\{"product":"Кава в зернах","deliveryRegion":"Україна"\}/);
-    assert.doesNotMatch(primaryLog, /maxMoq/);
+    assert.match(primaryLog, /"criteria":\{"product":"Кава в зернах","deliveryRegion":"Україна","maxMoq":\{"value":20/);
   } finally {
     globalThis.fetch = originalFetch;
     console.log = originalLog;
@@ -377,7 +376,8 @@ test("RoyalLife reaches enrichment and remains eligible with actual MOQ 30 кг 
     assert.equal(response.statusCode, 200);
     assert.equal(calls, 5, "missing price triggers one bounded fact-completion call");
     assert.equal(response.responseBody.results.length, 1);
-    assert.equal("moq" in response.responseBody.results[0], false);
+    assert.equal(response.responseBody.results[0].moq, "від 30 кг");
+    assert.notEqual(response.responseBody.results[0].moq, "20 кг");
     assert.equal((response.responseBody.results[0].delivery as { status: string }).status, "confirmed");
   } finally {
     globalThis.fetch = originalFetch;
@@ -408,7 +408,7 @@ test("marketplace B2B seller remains eligible from supplier-specific evidence de
     assert.equal(response.responseBody.results.length, 1);
     assert.equal(response.responseBody.results[0].title, "Company A");
     assert.equal(response.responseBody.results[0].supplierDomain, null);
-    assert.equal("moq" in response.responseBody.results[0], false);
+    assert.equal(response.responseBody.results[0].moq, "50 кг");
     assert.equal(response.responseBody.results[0].price, "1 100,00 грн");
     assert.equal((response.responseBody.results[0].delivery as { sourceType: string }).sourceType, "marketplace");
     assert.deepEqual(response.responseBody.results[0].evidenceSources, [{
@@ -472,11 +472,9 @@ test("pipeline separates discovery identity and supplier-specific facts without 
     assert.deepEqual(response.responseBody.results.map(item => item.title).sort(), ["!FEST Coffee Mission", "Coffee Town", "Royal Life"].sort());
     const royal = response.responseBody.results.find(item => item.title === "Royal Life");
     const coffeeTown = response.responseBody.results.find(item => item.title === "Coffee Town");
-    assert.ok(royal);
-    assert.equal("moq" in royal, false);
+    assert.equal(royal?.moq, "30 кг");
     assert.equal(royal?.price, "900 грн/кг");
-    assert.ok(coffeeTown);
-    assert.equal("moq" in coffeeTown, false);
+    assert.equal(coffeeTown?.moq, "10 кг");
     assert.equal(coffeeTown?.price, "700 грн/кг");
     assert.equal(response.responseBody.results.some(item => item.title === "постачальник"), false);
     assert.equal(response.responseBody.results.some(item => item.title === "Local Bean"), false, "location in Ukraine and Royal Life facts must not confirm Local Bean delivery");
@@ -519,7 +517,7 @@ test("supplier found during enrichment is promoted once without contaminating th
     assert.equal(calls, 6, "one promoted generation has a finite enrichment budget");
     assert.deepEqual(response.responseBody.results.map(item => item.title), ["BUNO"]);
     const buno = response.responseBody.results[0];
-    assert.equal("moq" in buno, false);
+    assert.equal(buno.moq, "50 кг", "verified actual MOQ survives a lower buyer preference");
     assert.equal(buno.price, "1100 грн/кг");
     assert.equal(response.responseBody.results.some(item => item.title === "Alpha Coffee"), false,
       "supplier B delivery and facts cannot make supplier A eligible");
@@ -602,6 +600,7 @@ test("post-discovery official evidence improves presentation only and preserves 
       ...response.responseBody.results[0],
       title: "Euro Roasters GmbH",
       product: "Кава в зернах",
+      moq: "25 кг",
       price: "800 грн/кг",
       score: 0.91,
     });

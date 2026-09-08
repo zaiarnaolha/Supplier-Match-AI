@@ -15,12 +15,12 @@
 | features_title | Огляд функцій | Заголовок | Усе необхідне для пошуку постачальника | 38 | 60 | Everything you need to find a supplier | 38 |
 | feature_1 | Огляд функцій | Функція 1 | **Пошук за описом потреби** — опишіть товар або категорію, яку шукаєте, своїми словами. | 91 | 120 | **Search by description** — describe the product or category you're looking for in your own words. | 94 |
 | feature_2 | Огляд функцій | Функція 2 | **Релевантні постачальники** — знаходьте варіанти, які відповідають вашим критеріям пошуку. | 95 | 120 | **Relevant suppliers** — find options that match your search criteria. | 66 |
-| feature_3 | Огляд функцій | Функція 3 | **Ключова інформація** — швидше знаходьте дані про ціни та доставку. | 74 | 120 | **Key information** — quickly find data on pricing and shipping. | 57 |
+| feature_3 | Огляд функцій | Функція 3 | **Ключова інформація** — швидше знаходьте дані про ціни, мінімальне замовлення та доставку. | 95 | 120 | **Key information** — quickly find data on pricing, minimum order, and shipping. | 76 |
 | feature_4 | Огляд функцій | Функція 4 | **Зручне порівняння** — оцінюйте постачальників за важливими для вас умовами. | 81 | 120 | **Easy comparison** — evaluate suppliers based on the terms that matter to you. | 75 |
 | how_title | Як це працює | Заголовок | Знайдіть постачальника у 4 кроки | 32 | 50 | Find a supplier in 4 steps | 26 |
 | how_intro | Як це працює | Вступний текст | Опишіть, що вам потрібно, і почніть пошук без зайвої рутини. | 60 | 100 | Describe what you need and start searching without the usual hassle. | 68 |
 | how_step_1 | Як це працює | Крок 1 | **Опишіть потребу** — напишіть, який товар або категорію товарів ви шукаєте. | 80 | 100 | **Describe your need** — write down the product or category you're looking for. | 75 |
-| how_step_2 | Як це працює | Крок 2 | **Додайте критерії** — вкажіть важливі умови: регіон, доставку чи інші вимоги. | 83 | 120 | **Add criteria** — specify important terms: region, shipping, or other requirements. | 76 |
+| how_step_2 | Як це працює | Крок 2 | **Додайте критерії** — вкажіть важливі умови: регіон, доставку, мінімальне замовлення чи інші вимоги. | 105 | 120 | **Add criteria** — specify important terms: region, shipping, minimum order, or other requirements. | 95 |
 | how_step_3 | Як це працює | Крок 3 | **Перегляньте варіанти** — отримайте добірку потенційно релевантних постачальників. | 87 | 100 | **Review options** — get a curated list of potentially relevant suppliers. | 70 |
 | how_step_4 | Як це працює | Крок 4 | **Порівняйте та оберіть** — оцініть доступну інформацію та визначте, з ким варто зв'язатися. | 96 | 110 | **Compare and choose** — assess the available information and decide who's worth contacting. | 88 |
 | faq_title | Часті запитання | Заголовок | Часті запитання | 15 | 30 | Frequently Asked Questions | 26 |

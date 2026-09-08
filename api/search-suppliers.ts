@@ -52,6 +52,7 @@ interface SupplierSearchResult extends TavilyResult {
   product: string | null;
   country: string | null;
   supplierLocation: string | null;
+  moq: string | null;
   price: string | null;
   delivery: DeliveryVerification;
 }
@@ -127,7 +128,16 @@ function structuredCriteriaFromBody(
   const region = typeof candidate.deliveryRegion === "string" && candidate.deliveryRegion.trim()
     ? candidate.deliveryRegion.trim()
     : fallback.deliveryRegion;
-  return { product, deliveryRegion: region };
+  let maxMoq = fallback.maxMoq;
+  if (candidate.maxMoq === null) maxMoq = null;
+  else if (candidate.maxMoq && typeof candidate.maxMoq === "object" && !Array.isArray(candidate.maxMoq)) {
+    const quantity = candidate.maxMoq as Record<string, unknown>;
+    if (typeof quantity.value === "number" && Number.isFinite(quantity.value) && quantity.value > 0
+      && (quantity.unit === "кг" || quantity.unit === "шт" || quantity.unit === "т")) {
+      maxMoq = { value: quantity.value, unit: quantity.unit, displayValue: `до ${quantity.value} ${quantity.unit}` };
+    }
+  }
+  return { product, deliveryRegion: region, maxMoq };
 }
 
 function isTavilyResult(value: unknown): value is TavilyResult {
@@ -346,6 +356,7 @@ export default async function handler(
         diagnosticsLog(stage === "official" ? "OFFICIAL" : "EXTERNAL", loggedPayload);
         diagnosticTrace[stage] = payload.result;
       } : undefined,
+      criteria.maxMoq?.displayValue ?? null,
       allowPromotion ? results => promotionEvidence.push(...asDiscoveryEvidence(results, "enrichment")) : undefined,
     );
     const fields = mergeEnrichment(primary, verification);
@@ -360,6 +371,7 @@ export default async function handler(
       product: fields.product,
       country: fields.supplierLocation,
       supplierLocation: fields.supplierLocation,
+      moq: fields.moq,
       price: fields.price,
       delivery: fields.delivery,
     } satisfies SupplierSearchResult;

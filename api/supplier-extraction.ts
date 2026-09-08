@@ -16,20 +16,10 @@ export interface PriceCandidate {
   literalFrom: boolean;
 }
 
-export interface MoqCandidate {
-  quantity: string;
-  unit: "кг" | "шт" | "т" | "г";
-  lowerBound: boolean;
-  displayValue: string;
-  evidence: string;
-}
-
 // Enumerable symbols survive object spread, while Object.keys and JSON.stringify
 // intentionally ignore them. This keeps evidence internal without making copies lossy.
 export const PRICE_CANDIDATES = Symbol("supplierPriceCandidates");
-export const MOQ_CANDIDATES = Symbol("supplierMoqCandidates");
 export type PriceBearingField = NonNullable<ExtractedField> & { [PRICE_CANDIDATES]?: PriceCandidate[] };
-type MoqBearingField = NonNullable<ExtractedField> & { [MOQ_CANDIDATES]?: MoqCandidate[] };
 
 type CanonicalCategory = { canonical: string; aliases: readonly string[] };
 type CountryDefinition = { canonical: string; strongSignals: readonly RegExp[]; cities: readonly string[]; domains: readonly string[] };
@@ -107,55 +97,25 @@ export function extractCountry(title: string, content: string, url: string): Ext
 
 function canonicalQuantity(raw: string): string {
   return raw.trim().replace(/\s+/g, " ").replace(/^from\s+/iu, "від ")
-    .replace(/kilograms?|кілограм(?:и|ів)?|kg/giu, "кг").replace(/pieces?|pcs?\.?|шт\./giu, "шт").replace(/tonnes?|tons?|тонн?(?:и)?/giu, "т")
-    .replace(/grams?|грам(?:и|ів)?/giu, "г");
-}
-
-function moqCandidate(raw: string, marker: string, evidence: string): MoqCandidate | null {
-  let displayValue = canonicalQuantity(raw);
-  const markerLowerBound = /^(?:опт|гуртом)\s+від|wholesale\s+from/iu.test(marker);
-  const lowerBound = /^(?:від|from)\s+/iu.test(raw.trim()) || markerLowerBound;
-  if (lowerBound && !displayValue.startsWith("від ")) displayValue = `від ${displayValue}`;
-  const parsed = displayValue.match(/^(?:від\s+)?(\d+(?:[.,]\d+)?(?:\s*[–—-]\s*\d+(?:[.,]\d+)?)?)\s*(кг|шт|т|г)$/iu);
-  if (!parsed) return null;
-  const quantity = parsed[1].replace(/\s+/g, "").replace(/,/g, ".").replace(/^0+(?=\d)/u, "");
-  return { quantity, unit: parsed[2].toLocaleLowerCase() as MoqCandidate["unit"], lowerBound, displayValue, evidence };
-}
-
-export function aggregateMoqCandidates(candidates: MoqCandidate[]): MoqBearingField | null {
-  if (!candidates.length) return null;
-  const groups = new Map<string, MoqCandidate[]>();
-  for (const candidate of candidates) {
-    const key = `${candidate.quantity}|${candidate.unit}`;
-    groups.set(key, [...(groups.get(key) ?? []), candidate]);
-  }
-  if (groups.size !== 1) return null;
-  const group = [...groups.values()][0];
-  const selected = group.find(candidate => candidate.lowerBound) ?? group[0];
-  const field: MoqBearingField = { value: selected.displayValue, evidence: selected.evidence, confidence: "high" };
-  Object.defineProperty(field, MOQ_CANDIDATES, { value: group, enumerable: true });
-  return field;
-}
-
-export function moqCandidates(field: ExtractedField | undefined): MoqCandidate[] {
-  return field ? ((field as MoqBearingField)[MOQ_CANDIDATES] ?? []) : [];
+    .replace(/kilograms?|кілограм(?:и|ів)?|kg/giu, "кг").replace(/pieces?|pcs?\.?/giu, "шт").replace(/tonnes?|tons?|тонн?(?:и)?/giu, "т");
 }
 
 export function extractMoq(title: string, content: string): ExtractedField {
   const text = `${title}. ${content}`.replace(/\s+/g, " ");
-  const findings: MoqCandidate[] = [];
+  const findings: Array<{ value: string; evidence: string }> = [];
   for (const marker of text.matchAll(MOQ_MARKER)) {
     const start = marker.index ?? 0;
     const nearby = text.slice(start, start + marker[0].length + 110);
-    const quantityMatch = nearby.match(QUANTITY);
-    const quantity = quantityMatch?.[0];
-    const beforeQuantity = nearby.slice(marker[0].length, quantityMatch?.index);
-    if (quantity && !/(?:^|\s)(?:до|max(?:imum)?)(?:\s|$)/iu.test(beforeQuantity)) {
-      const candidate = moqCandidate(quantity, marker[0], nearby.trim());
-      if (candidate) findings.push(candidate);
+    const quantity = nearby.match(QUANTITY)?.[0];
+    if (quantity) {
+      let value = canonicalQuantity(quantity);
+      if (/^(?:опт|гуртом)\s+від|wholesale\s+from/iu.test(marker[0]) && !value.startsWith("від ")) value = `від ${value}`;
+      findings.push({ value, evidence: nearby.trim() });
     }
   }
-  return aggregateMoqCandidates(findings);
+  const distinct = new Map(findings.map(item => [item.value.toLocaleLowerCase(), item]));
+  if (distinct.size !== 1) return null;
+  return { ...[...distinct.values()][0], confidence: "high" };
 }
 
 function cleanPrice(raw: string): string { return raw.trim().replace(/\s+/g, " ").replace(/^from\s+/iu, "від "); }

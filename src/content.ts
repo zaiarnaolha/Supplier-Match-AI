@@ -19,11 +19,11 @@ export const copy: Record<Language, LandingCopy> = {
     features:{title:'Everything you need to find a supplier',items:[
       {title:'Search by description',text:"Describe the product or category you're looking for in your own words."},
       {title:'Relevant suppliers',text:'Find options that match your search criteria.'},
-      {title:'Key information',text:'Quickly find data on pricing and shipping.'},
+      {title:'Key information',text:'Quickly find data on pricing, minimum order, and shipping.'},
       {title:'Easy comparison',text:'Evaluate suppliers based on the terms that matter to you.'}]},
     how:{title:'Find a supplier in 4 steps',text:'Describe what you need and start searching without the usual hassle.',items:[
       {title:'Describe your need',text:"Write down the product or category you're looking for."},
-      {title:'Add criteria',text:'Specify important terms: region, shipping, or other requirements.'},
+      {title:'Add criteria',text:'Specify important terms: region, shipping, minimum order, or other requirements.'},
       {title:'Review options',text:'Get a curated list of potentially relevant suppliers.'},
       {title:'Compare and choose',text:"Assess the available information and decide who's worth contacting."}]},
     faq:{title:'Frequently Asked Questions',items:[
@@ -41,11 +41,11 @@ export const copy: Record<Language, LandingCopy> = {
     features:{title:'Усе необхідне для пошуку постачальника',items:[
       {title:'Пошук за описом потреби',text:'Опишіть товар або категорію, яку шукаєте, своїми словами.'},
       {title:'Релевантні постачальники',text:'Знаходьте варіанти, які відповідають вашим критеріям пошуку.'},
-      {title:'Ключова інформація',text:'Швидше знаходьте дані про ціни та доставку.'},
+      {title:'Ключова інформація',text:'Швидше знаходьте дані про ціни, мінімальне замовлення та доставку.'},
       {title:'Зручне порівняння',text:'Оцінюйте постачальників за важливими для вас умовами.'}]},
     how:{title:'Знайдіть постачальника у 4 кроки',text:'Опишіть, що вам потрібно, і почніть пошук без зайвої рутини.',items:[
       {title:'Опишіть потребу',text:'Напишіть, який товар або категорію товарів ви шукаєте.'},
-      {title:'Додайте критерії',text:'Вкажіть важливі умови: регіон, доставку чи інші вимоги.'},
+      {title:'Додайте критерії',text:'Вкажіть важливі умови: регіон, доставку, мінімальне замовлення чи інші вимоги.'},
       {title:'Перегляньте варіанти',text:'Отримайте добірку потенційно релевантних постачальників.'},
       {title:'Порівняйте та оберіть',text:"Оцініть доступну інформацію та визначте, з ким варто зв'язатися."}]},
     faq:{title:'Часті запитання',items:[

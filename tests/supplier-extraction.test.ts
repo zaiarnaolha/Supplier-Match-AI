@@ -46,22 +46,6 @@ test("extracts and normalizes explicit minimum order quantities", () => {
   assert.equal(extractMoq("Royal Life", "Мінімальний обсяг для отримання оптових умов у Royal Life починається від 30 кг.")?.value, "від 30 кг");
 });
 
-test("normalizes semantically equivalent MOQ observations and prefers an explicit lower bound", () => {
-  assert.equal(extractMoq("Coffee", "MOQ 5 кг. MOQ від 5 кг.")?.value, "від 5 кг");
-  assert.equal(extractMoq("Coffee", "MOQ 5 kg. MOQ 5 кг. Minimum order 5 kg.")?.value, "5 кг");
-  assert.equal(extractMoq("Coffee", "Minimum order 5 kg. Wholesale from 5 kg.")?.value, "від 5 кг");
-});
-
-test("keeps conservative MOQ conflicts across quantities and units", () => {
-  assert.equal(extractMoq("Coffee", "MOQ 5 кг. MOQ 10 кг."), null);
-  assert.equal(extractMoq("Coffee", "MOQ 5 кг. MOQ 5 шт."), null);
-});
-
-test("does not turn minimum order value or a buyer maximum into supplier MOQ", () => {
-  assert.equal(extractMoq("Coffee", "Minimum order value 5000 грн."), null);
-  assert.equal(extractMoq("Запит покупця", "Кава в зернах, MOQ до 20 кг"), null);
-});
-
 test("returns null for absent and ambiguous MOQ", () => {
   assert.equal(extractMoq("Продаж оптом", "Звертайтеся до менеджера"), null);
   assert.equal(extractMoq("Каталог", "MOQ 10 кг для арабіки. MOQ 20 кг для робусти."), null);
