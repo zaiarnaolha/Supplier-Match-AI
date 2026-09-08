@@ -29,7 +29,7 @@ function extractProductCriterion(query: string): string | null {
   const product = withoutIntent
     .replace(/\s+(?:з|із|зі|with)\s+(?:достав\p{L}*|delivery|shipping)\b.*$/iu, "")
     .replace(/\s+(?:для\s+)?(?:достав\p{L}*|постав\p{L}*|delivery|shipping)\b.*$/iu, "")
-    .replace(/\s+(?:в|до|to)\s+(?:україн\p{L}*|ukraine|європ\p{L}*|europe|азі\p{L}*|asia)\b.*$/iu, "")
+    .replace(/\s+(?:в|до|to)\s+(?:україн\p{L}*|ukraine|європ\p{L}*|europe|азі\p{L}*|asia)(?=$|[^\p{L}\p{N}]).*$/iu, "")
     .replace(/\s+(?:moq|мінімальн\p{L}*\s+(?:замовлення|парті\p{L}*)|ціна|price)\b.*$/iu, "")
     .replace(/[.,;:!?]+$/u, "")
     .trim();
