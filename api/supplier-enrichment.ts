@@ -48,7 +48,7 @@ type EnrichmentContext = {
   supplierHostname: string;
   deliveryRegion: string;
   sourceType: EvidenceSource;
-  requestedProduct: string;
+  requestedProduct?: string;
 };
 
 const GENERIC_EXTERNAL = /(?:top|топ|rating|рейтинг|best|кращі|list of|список|directory|каталог)\s*(?:\d+\s*)?(?:coffee\s*)?(?:suppliers?|manufacturers?|постачальник\p{L}*|виробник\p{L}*)/iu;
@@ -77,21 +77,21 @@ function exactProductPhrasePresent(value: string, requestedProduct: string): boo
   return text.includes(` ${requested} `);
 }
 
-function productEvidence(result: EnrichmentSearchResult, requestedProduct: string): ExtractedField {
-  const requestedCanonical = extractProduct(requestedProduct, "", "")?.value;
+function productEvidence(result: EnrichmentSearchResult, requestedProduct?: string): ExtractedField {
+  const effectiveRequestedProduct = requestedProduct?.trim() || "Кава в зернах";
+  const requestedCanonical = extractProduct(effectiveRequestedProduct, "", "")?.value;
   const extracted = extractProduct(result.title, result.content, result.url);
   if (requestedCanonical && extracted?.value === requestedCanonical) {
-    // Preserve PR49's protection against a clearly different product in the title.
     return OTHER_PRODUCT_TITLE.test(result.title) && !extractProduct(result.title, "", result.url) ? null : extracted;
   }
 
-  if (exactProductPhrasePresent(result.title, requestedProduct)) {
-    return { value: requestedProduct, evidence: `title: ${requestedProduct}`, confidence: "high" };
+  if (exactProductPhrasePresent(result.title, effectiveRequestedProduct)) {
+    return { value: effectiveRequestedProduct, evidence: `title: ${effectiveRequestedProduct}`, confidence: "high" };
   }
 
   for (const sentence of result.content.split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
-    if (exactProductPhrasePresent(sentence, requestedProduct) && PRODUCT_CONTEXT_WORD.test(sentence)) {
-      return { value: requestedProduct, evidence: sentence.slice(0, 280), confidence: "medium" };
+    if (exactProductPhrasePresent(sentence, effectiveRequestedProduct) && PRODUCT_CONTEXT_WORD.test(sentence)) {
+      return { value: effectiveRequestedProduct, evidence: sentence.slice(0, 280), confidence: "medium" };
     }
   }
   return null;
