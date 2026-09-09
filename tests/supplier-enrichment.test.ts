@@ -164,6 +164,22 @@ test("MOQ and concrete price require explicit evidence on a product-relevant res
   assert.equal(enriched.price, "618 ₴/кг");
 });
 
+test("equivalent MOQ evidence across results prefers explicit lower-bound wording", () => {
+  const enriched = extractVerifiedEnrichment([
+    result("Кава в зернах. Мінімальна партія 5 кг."),
+    result("Кава в зернах. Опт від 5 кг.", { url: "https://exact-coffee.example/wholesale" }),
+  ], context);
+  assert.equal(enriched.moq, "від 5 кг");
+});
+
+test("conflicting MOQ evidence across results remains unknown", () => {
+  const enriched = extractVerifiedEnrichment([
+    result("Whole bean coffee. MOQ 5 kg."),
+    result("Whole bean coffee. MOQ 10 kg.", { url: "https://exact-coffee.example/wholesale" }),
+  ], context);
+  assert.equal(enriched.moq, null);
+});
+
 test("computes from only across distinct comparable exact observations", () => {
   const enriched = extractVerifiedEnrichment([
     result("Whole bean coffee. Price 620 UAH/kg."),
@@ -280,18 +296,14 @@ test("confirmed official delivery with complete informational facts avoids fact 
   assert.equal(enriched.price, "618 ₴/кг");
 });
 
-test("confirmed delivery with missing MOQ performs one bounded supplier-specific fact completion", async () => {
-  const calls: Array<{ query: string; maxResults: number }> = [];
-  const enriched = await enrichSupplier({ title: "Exact Coffee", url: "https://exact-coffee.example" }, "coffee beans", "Ukraine", async (query, options) => {
-    calls.push({ query, maxResults: options.maxResults });
-    if (calls.length === 1) return [result("Coffee beans. Wholesale price 618 ₴/кг. We deliver throughout Ukraine.")];
-    return [result("Exact Coffee supplies coffee beans. Minimum order 30 kg.", { url: "https://profile.example/exact" })];
+test("confirmed delivery with price does not research missing internal MOQ", async () => {
+  const calls: string[] = [];
+  const enriched = await enrichSupplier({ title: "Exact Coffee", url: "https://exact-coffee.example" }, "coffee beans", "Ukraine", async query => {
+    calls.push(query);
+    return [result("Coffee beans. Wholesale price 618 ₴/кг. We deliver throughout Ukraine.")];
   });
-  assert.equal(calls.length, 2);
-  assert.equal(calls[1].maxResults, 5);
-  assert.match(calls[1].query, /^"Exact Coffee" "exact-coffee\.example" coffee beans MOQ minimum order wholesale order$/);
-  assert.doesNotMatch(calls[1].query, /product price/);
-  assert.equal(enriched.moq, "30 кг");
+  assert.equal(calls.length, 1);
+  assert.equal(enriched.moq, null);
   assert.equal(enriched.price, "618 ₴/кг");
   assert.equal(enriched.delivery.status, "confirmed");
 });
@@ -368,7 +380,8 @@ test("fact completion retains current ownership, product, and conservative extra
     return calls.length === 1 ? [result("Coffee beans. We deliver throughout Ukraine.")] : unsafeResults;
   });
   assert.equal(calls.length, 2, "fact completion is bounded to one external search");
-  assert.match(calls[1], /MOQ minimum order wholesale order price wholesale price product price$/);
+  assert.match(calls[1], /price wholesale price product price$/);
+  assert.doesNotMatch(calls[1], /MOQ minimum order/);
   assert.equal(enriched.delivery.status, "confirmed");
   assert.equal(enriched.moq, null);
   assert.equal(enriched.price, null);
@@ -409,7 +422,7 @@ test("supplier-specific marketplace evidence can provide product, delivery, MOQ,
   let calls = 0;
   const enriched = await enrichSupplier(
     { title: "Gemini", url: "https://gemini.ua", domain: "gemini.ua", evidenceSources: [marketplace] },
-    "Кава в зернах", "Україна", async () => { calls += 1; return []; }, undefined, "до 20 кг",
+    "Кава в зернах", "Україна", async () => { calls += 1; return []; },
   );
   assert.equal(calls, 1, "confirmed discovered evidence avoids an unnecessary external lookup");
   assert.equal(enriched.delivery.status, "confirmed");
