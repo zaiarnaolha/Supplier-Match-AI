@@ -21,7 +21,20 @@ function extractProductCriterion(query: string): string | null {
   if (/(?:whole bean coffee|кава в зернах|кави в зернах|зернова кава|зернової кави|coffee beans)/iu.test(query)) {
     return "Кава в зернах";
   }
-  return null;
+
+  const withoutIntent = query.trim()
+    .replace(/^(?:я\s+)?(?:шукаю|знайти|потрібно\s+знайти|потрібно|потрібен|потрібна|потрібні|looking\s+for|find|need)\s+/iu, "")
+    .replace(/^(?:постачальника|постачальників|постачальник|виробника|виробників|дистриб['’]?ютора|дистриб['’]?юторів|supplier|suppliers|manufacturer|manufacturers|distributor|distributors)\s+/iu, "");
+
+  const product = withoutIntent
+    .replace(/\s+(?:з|із|зі|with)\s+(?:достав\p{L}*|delivery|shipping)\b.*$/iu, "")
+    .replace(/\s+(?:для\s+)?(?:достав\p{L}*|постав\p{L}*|delivery|shipping)\b.*$/iu, "")
+    .replace(/\s+(?:в|до|to)\s+(?:україн\p{L}*|ukraine|європ\p{L}*|europe|азі\p{L}*|asia)(?=$|[^\p{L}\p{N}]).*$/iu, "")
+    .replace(/\s+(?:moq|мінімальн\p{L}*\s+(?:замовлення|парті\p{L}*)|ціна|price)\b.*$/iu, "")
+    .replace(/[.,;:!?]+$/u, "")
+    .trim();
+
+  return product.length >= 2 && product.length <= 120 ? product : null;
 }
 
 function extractDeliveryRegionCriterion(query: string): string {

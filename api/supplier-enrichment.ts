@@ -43,6 +43,13 @@ export type EnrichmentDiagnostics = (
 ) => void;
 
 type SourcedField = ExtractedField & { sourceUrl?: string; sourceType?: EvidenceSource };
+type EnrichmentContext = {
+  supplierName: string;
+  supplierHostname: string;
+  deliveryRegion: string;
+  sourceType: EvidenceSource;
+  requestedProduct?: string;
+};
 
 const GENERIC_EXTERNAL = /(?:top|топ|rating|рейтинг|best|кращі|list of|список|directory|каталог)\s*(?:\d+\s*)?(?:coffee\s*)?(?:suppliers?|manufacturers?|постачальник\p{L}*|виробник\p{L}*)/iu;
 const DELIVERY_WORD = /(?:deliver(?:y|ies|ed|ing)?|ship(?:ping|s|ped)?|supply|достав(?:ка|ляємо|ляє|ляють|ити|ки|ку)|постав(?:ка|ляємо|ляє|ляють|ки|ку))/iu;
@@ -52,18 +59,39 @@ const LOCATION_VALUE = /(?:[\p{L}.'’ -]+,\s*)?(?:ukraine|україна|poland
 const CHROME_GARBAGE = /(?:карта\s+сайту|site\s*map|breadcrumbs?|меню|menu|контакти\s+м|©|privacy|політика)/iu;
 const MARKETPLACE_NETWORK = /(?:доставк\p{L}*\s+(?:rozetka|розетка)|(?:rozetka|розетка)\s+доставк\p{L}*|marketplace\s+delivery\s+network|доступн\p{L}*\s+(?:для\s+замовлення\s+)?(?:з|із)\s+доставк\p{L}*|nationwide\s+(?:marketplace\s+)?delivery)/iu;
 const CATALOGUE_WIDE_DELIVERY = /(?:ус(?:і|ю)\s+(?:товари|продукці\p{L}*|замовлення)|весь\s+(?:каталог|асортимент)|для\s+(?:всіх|усіх)\s+(?:товарів|замовлень)|all\s+(?:products|catalog(?:ue)?\s+items|orders)|entire\s+(?:catalog(?:ue)?|range)|catalog(?:ue)?-wide)[^.!?]{0,90}(?:достав|ship)|(?:достав|ship)[^.!?]{0,90}(?:ус(?:і|ю)\s+(?:товари|продукці\p{L}*|замовлення)|весь\s+(?:каталог|асортимент)|для\s+(?:всіх|усіх)\s+(?:товарів|замовлень)|all\s+(?:products|catalog(?:ue)?\s+items|orders)|entire\s+(?:catalog(?:ue)?|range)|catalog(?:ue)?-wide)/iu;
-const OTHER_PRODUCT_TITLE = /(?:офісн\p{L}*\s+папір|office\s+paper|мий(?:ний|ні)\s+засіб|пральн\p{L}*\s+порошок|detergent|\btea\b|\bчай\b)/iu;
+const PRODUCT_CONTEXT_WORD = /(?:product|products|товар\p{L}*|продукці\p{L}*|catalog|catalogue|каталог|assortment|асортимент|wholesale|b2b|опт\p{L}*|гурт\p{L}*|supplier|постачальник\p{L}*|manufacturer|виробник\p{L}*|price|ціна)/iu;
 
 function textOf(result: EnrichmentSearchResult): string {
   return `${result.title}. ${result.content}`.replace(/\s+/g, " ").trim();
 }
 
-function productEvidence(result: EnrichmentSearchResult): ExtractedField {
-  const product = extractProduct(result.title, result.content, result.url);
-  // Search snippets can contain navigation/footer text for other catalogue items.
-  // An explicitly different product in the page title wins over such incidental text.
-  return product && OTHER_PRODUCT_TITLE.test(result.title)
-    && !extractProduct(result.title, "", result.url) ? null : product;
+function normalizeProductText(value: string): string {
+  return value.toLocaleLowerCase().replace(/[’`]/g, "'").replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
+}
+
+function exactProductPhrasePresent(value: string, requestedProduct: string): boolean {
+  const requested = normalizeProductText(requestedProduct);
+  if (!requested) return false;
+  const text = ` ${normalizeProductText(value)} `;
+  return text.includes(` ${requested} `);
+}
+
+function productEvidence(result: EnrichmentSearchResult, requestedProduct?: string): ExtractedField {
+  const effectiveRequestedProduct = requestedProduct?.trim() || "Кава в зернах";
+  const requestedCanonical = extractProduct(effectiveRequestedProduct, "", "")?.value;
+  const extracted = extractProduct(result.title, result.content, result.url);
+  if (requestedCanonical && extracted?.value === requestedCanonical) return extracted;
+
+  if (exactProductPhrasePresent(result.title, effectiveRequestedProduct)) {
+    return { value: effectiveRequestedProduct, evidence: `title: ${effectiveRequestedProduct}`, confidence: "high" };
+  }
+
+  for (const sentence of result.content.split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
+    if (exactProductPhrasePresent(sentence, effectiveRequestedProduct) && PRODUCT_CONTEXT_WORD.test(sentence)) {
+      return { value: effectiveRequestedProduct, evidence: sentence.slice(0, 280), confidence: "medium" };
+    }
+  }
+  return null;
 }
 
 function normalizeIdentity(value: string): string {
@@ -167,14 +195,11 @@ function withPriceCandidates(result: EnrichmentResult, candidates: PriceCandidat
   return result;
 }
 
-function diagnosticEvaluation(
-  result: EnrichmentSearchResult,
-  context: { supplierName: string; supplierHostname: string; deliveryRegion: string; sourceType: EvidenceSource },
-) {
+function diagnosticEvaluation(result: EnrichmentSearchResult, context: EnrichmentContext) {
   const text = textOf(result);
   const identityMatchedBy = identityMatchKind(result, context.supplierName, context.supplierHostname);
   const genericRejected = GENERIC_EXTERNAL.test(text);
-  const product = productEvidence(result);
+  const product = productEvidence(result, context.requestedProduct);
   const moq = product ? extractMoq(result.title, result.content) : null;
   const price = product ? extractPrice(result.title, result.content, product, result.url) : null;
   const location = explicitLocation(result);
@@ -232,16 +257,13 @@ function diagnosticEvaluation(
   };
 }
 
-export function extractVerifiedEnrichment(
-  results: EnrichmentSearchResult[],
-  context: { supplierName: string; supplierHostname: string; deliveryRegion: string; sourceType: EvidenceSource },
-): EnrichmentResult {
+export function extractVerifiedEnrichment(results: EnrichmentSearchResult[], context: EnrichmentContext): EnrichmentResult {
   const eligible = results.filter(result => context.sourceType === "official"
     ? canonicalSupplierDomain(hostname(result.url)) === canonicalSupplierDomain(context.supplierHostname)
     : context.sourceType === "marketplace"
       ? !GENERIC_EXTERNAL.test(textOf(result))
         && marketplaceSellerIdentityPresent(result, context.supplierName)
-        && Boolean(productEvidence(result))
+        && Boolean(productEvidence(result, context.requestedProduct))
       : !GENERIC_EXTERNAL.test(textOf(result)) && supplierIdentityPresent(result, context.supplierName, context.supplierHostname));
   const productFields: SourcedField[] = [];
   const moqFields: SourcedField[] = [];
@@ -250,9 +272,8 @@ export function extractVerifiedEnrichment(
   const deliverySignals: Array<{ negative: boolean; evidence: string; url: string; method: "explicit" | "network" }> = [];
 
   for (const result of eligible) {
-    const product = productEvidence(result);
+    const product = productEvidence(result, context.requestedProduct);
     if (product) productFields.push({ ...product, sourceUrl: result.url, sourceType: context.sourceType });
-    // MOQ and price require product evidence in this exact result, avoiding values for another product.
     if (product) {
       const moq = extractMoq(result.title, result.content);
       const price = extractPrice(result.title, result.content, product, result.url);
@@ -324,18 +345,18 @@ export async function enrichSupplier(
   const supplierHostname = supplier.domain
     ? canonicalSupplierDomain(supplier.domain)
     : sourceTypeForUrl(supplier.url) === "official" ? canonicalSupplierDomain(hostname(supplier.url)) : "";
-  const empty = extractVerifiedEnrichment([], { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official" });
+  const empty = extractVerifiedEnrichment([], { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official", requestedProduct });
   const discoveredSources = supplier.evidenceSources ?? [];
   const discoveredOfficial = extractVerifiedEnrichment(discoveredSources.filter(source => supplierHostname
     && canonicalSupplierDomain(source.url) === supplierHostname), {
-    supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official",
+    supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official", requestedProduct,
   });
   const discoveredExternal = extractVerifiedEnrichment(discoveredSources.filter(source => sourceTypeForUrl(source.url) !== "marketplace"
     && (!supplierHostname || canonicalSupplierDomain(source.url) !== supplierHostname)), {
-    supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external",
+    supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external", requestedProduct,
   });
   const discoveredMarketplace = extractVerifiedEnrichment(discoveredSources.filter(source => sourceTypeForUrl(source.url) === "marketplace"), {
-    supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "marketplace",
+    supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "marketplace", requestedProduct,
   });
   const discoveredEvidence = mergeEnrichment(mergeEnrichment(discoveredOfficial, discoveredMarketplace), discoveredExternal);
   let official = empty;
@@ -343,18 +364,15 @@ export async function enrichSupplier(
   const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price ${moqRequirement} delivery shipping ${deliveryRegion} company legal address`.replace(/\s+/g, " ").trim();
   try {
     if (!supplierHostname) throw new Error("supplier official domain is unknown");
-    const results = await search(
-      officialQuery,
-      { includeDomains: [supplierHostname], maxResults: 5 },
-    );
+    const results = await search(officialQuery, { includeDomains: [supplierHostname], maxResults: 5 });
     observeEvidence?.(results);
-    official = extractVerifiedEnrichment(results, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official" });
+    official = extractVerifiedEnrichment(results, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official", requestedProduct });
     diagnostics?.("official", {
       supplierTitle: supplier.title,
       hostname: supplierHostname,
       query: officialQuery,
       rawResults: results,
-      evaluations: results.map(result => diagnosticEvaluation(result, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official" })),
+      evaluations: results.map(result => diagnosticEvaluation(result, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "official", requestedProduct })),
       result: official,
       callFailed: false,
     });
@@ -374,20 +392,15 @@ export async function enrichSupplier(
     ? `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${missingFactTerms}`.replace(/\s+/g, " ").trim()
     : `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${moqRequirement} ${deliveryRegion} shipping delivery wholesale distributor`.replace(/\s+/g, " ").trim();
   try {
-    const externalResults = await search(
-      externalQuery,
-      { maxResults: 5 },
-    );
-    // Fact completion enriches only the current, already-resolved supplier. It is
-    // not another discovery or promotion pass.
+    const externalResults = await search(externalQuery, { maxResults: 5 });
     if (!factCompletion) observeEvidence?.(externalResults);
-    const external = extractVerifiedEnrichment(externalResults, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external" });
+    const external = extractVerifiedEnrichment(externalResults, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external", requestedProduct });
     diagnostics?.("external", {
       supplierTitle: supplier.title,
       hostname: supplierHostname,
       query: externalQuery,
       rawResults: externalResults,
-      evaluations: externalResults.map(result => diagnosticEvaluation(result, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external" })),
+      evaluations: externalResults.map(result => diagnosticEvaluation(result, { supplierName: supplier.title, supplierHostname, deliveryRegion, sourceType: "external", requestedProduct })),
       result: external,
       callFailed: false,
     });
