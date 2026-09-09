@@ -1,6 +1,6 @@
 import {
-  aggregatePriceCandidates, extractMoq, extractPrice, extractProduct, priceCandidates, PRICE_CANDIDATES,
-  type ExtractedField, type PriceCandidate,
+  aggregateMoqCandidates, aggregatePriceCandidates, extractMoq, extractPrice, extractProduct, moqCandidates, MOQ_CANDIDATES,
+  priceCandidates, PRICE_CANDIDATES, type ExtractedField, type MoqCandidate, type PriceCandidate,
 } from "./supplier-extraction";
 import { canonicalSupplierDomain, identifySupplier, sourceTypeForUrl } from "./supplier-identity";
 
@@ -23,6 +23,7 @@ export interface EnrichmentResult {
   supplierLocation: string | null;
   delivery: DeliveryVerification;
   [PRICE_CANDIDATES]?: PriceCandidate[];
+  [MOQ_CANDIDATES]?: MoqCandidate[];
 }
 
 export interface EnrichmentSearchResult {
@@ -45,7 +46,7 @@ export type EnrichmentDiagnostics = (
 type SourcedField = ExtractedField & { sourceUrl?: string; sourceType?: EvidenceSource };
 
 const GENERIC_EXTERNAL = /(?:top|топ|rating|рейтинг|best|кращі|list of|список|directory|каталог)\s*(?:\d+\s*)?(?:coffee\s*)?(?:suppliers?|manufacturers?|постачальник\p{L}*|виробник\p{L}*)/iu;
-const DELIVERY_WORD = /(?:deliver(?:y|ies|ed|ing)?|ship(?:ping|s|ped)?|supply|достав(?:ка|ляємо|ляє|ляють|ити|ки|ку)|постав(?:ка|ляємо|ляє|ляють|ки|ку))/iu;
+const DELIVERY_WORD = /(?:deliver(?:y|ies|ed|ing)?|ship(?:ping|s|ped)?|supply|fulfil(?:lment|ling|led|s)?|достав(?:ка|ляємо|ляє|ляють|ити|ки|ку)|постав(?:ка|ляємо|ляє|ляють|ки|ку)|відправляємо|відправляти|відправка)/iu;
 const NEGATIVE_DELIVERY = /(?:do(?:es)?\s+not|don['’]?t|cannot|can['’]?t|not\s+available|не\s+(?:доставля\p{L}*|постачає\p{L}*)|доставка\s+недоступна|не\s+обслуговує\p{L}*)/iu;
 const LOCATION_LABEL = /(?:legal|registered|contact|business)\s+address|headquarters|юридична\s+адреса|адреса\s+(?:компанії|офісу)|головний\s+офіс/iu;
 const LOCATION_VALUE = /(?:[\p{L}.'’ -]+,\s*)?(?:ukraine|україна|poland|польща|germany|німеччина|romania|румунія|slovakia|словаччина|czechia|чехія)/iu;
@@ -56,6 +57,13 @@ const OTHER_PRODUCT_TITLE = /(?:офісн\p{L}*\s+папір|office\s+paper|м�
 
 function textOf(result: EnrichmentSearchResult): string {
   return `${result.title}. ${result.content}`.replace(/\s+/g, " ").trim();
+}
+
+function semanticFragments(result: EnrichmentSearchResult): string[] {
+  return `${result.title}\n${result.content}`
+    .split(/\r?\n+|(?<=[.!?])\s+|\s*[|•]\s*/u)
+    .map(fragment => fragment.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
 }
 
 function productEvidence(result: EnrichmentSearchResult): ExtractedField {
@@ -121,12 +129,18 @@ function identityMatchKind(
 }
 
 function deliverySignal(result: EnrichmentSearchResult, region: string): { negative: boolean; evidence: string } | null {
-  const text = textOf(result);
   const regionRegex = regionPattern(region);
   if (!regionRegex) return null;
-  for (const sentence of text.split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
-    if (!regionRegex.test(sentence) || !DELIVERY_WORD.test(sentence)) continue;
-    return { negative: NEGATIVE_DELIVERY.test(sentence), evidence: sentence.slice(0, 280) };
+  // A delivery term and region must form one local directional relation. Merely
+  // appearing somewhere in the same search snippet is not delivery evidence.
+  const interveningWords = "(?:\\s+[\\p{L}\\p{N}.'’-]+)";
+  const deliveryToRegion = new RegExp(
+    `${DELIVERY_WORD.source}\\s*(?:[:—-]\\s*${regionRegex.source}|${interveningWords}{0,6}\\s+(?:to|into|throughout|across|within|in|for|по|до|в|у|на)${interveningWords}{0,8}\\s*${regionRegex.source})`,
+    "iu",
+  );
+  for (const fragment of semanticFragments(result)) {
+    if (!deliveryToRegion.test(fragment)) continue;
+    return { negative: NEGATIVE_DELIVERY.test(fragment), evidence: fragment.slice(0, 280) };
   }
   return null;
 }
@@ -134,7 +148,7 @@ function deliverySignal(result: EnrichmentSearchResult, region: string): { negat
 function marketplaceDeliveryNetworkSignal(result: EnrichmentSearchResult, region: string): { negative: boolean; evidence: string } | null {
   const regionRegex = regionPattern(region);
   if (!regionRegex) return null;
-  for (const sentence of textOf(result).split(/(?<=[.!?])\s+|\s*[|•]\s*/u)) {
+  for (const sentence of semanticFragments(result)) {
     if (regionRegex.test(sentence) && MARKETPLACE_NETWORK.test(sentence)) {
       return { negative: NEGATIVE_DELIVERY.test(sentence), evidence: sentence.slice(0, 280) };
     }
@@ -164,6 +178,11 @@ function oneValue(fields: SourcedField[]): SourcedField {
 
 function withPriceCandidates(result: EnrichmentResult, candidates: PriceCandidate[]): EnrichmentResult {
   if (candidates.length) Object.defineProperty(result, PRICE_CANDIDATES, { value: candidates, enumerable: true });
+  return result;
+}
+
+function withMoqCandidates(result: EnrichmentResult, candidates: MoqCandidate[]): EnrichmentResult {
+  if (candidates.length) Object.defineProperty(result, MOQ_CANDIDATES, { value: candidates, enumerable: true });
   return result;
 }
 
@@ -276,9 +295,11 @@ export function extractVerifiedEnrichment(
     : hasNegative && !hasPositive ? "not_available" : "not_confirmed";
   const candidates = priceFields.flatMap(field => priceCandidates(field));
   const aggregatedPrice = aggregatePriceCandidates(candidates);
-  return withPriceCandidates({
+  const moqObservations = moqFields.flatMap(field => moqCandidates(field));
+  const aggregatedMoq = aggregateMoqCandidates(moqObservations);
+  return withMoqCandidates(withPriceCandidates({
     product: oneValue(productFields)?.value ?? null,
-    moq: oneValue(moqFields)?.value ?? null,
+    moq: aggregatedMoq?.value ?? null,
     price: aggregatedPrice?.value ?? null,
     supplierLocation: oneValue(locationFields)?.value ?? null,
     delivery: {
@@ -292,7 +313,7 @@ export function extractVerifiedEnrichment(
           : context.sourceType
       } : {}),
     },
-  }, candidates);
+  }, candidates), moqObservations);
 }
 
 export function mergeEnrichment(primary: EnrichmentResult, secondary?: EnrichmentResult): EnrichmentResult {
@@ -303,13 +324,15 @@ export function mergeEnrichment(primary: EnrichmentResult, secondary?: Enrichmen
     : primary.delivery.status !== "not_confirmed" ? primary.delivery : secondary.delivery;
   const candidates = [...(primary[PRICE_CANDIDATES] ?? []), ...(secondary[PRICE_CANDIDATES] ?? [])];
   const price = aggregatePriceCandidates(candidates);
-  return withPriceCandidates({
+  const moqObservations = [...(primary[MOQ_CANDIDATES] ?? []), ...(secondary[MOQ_CANDIDATES] ?? [])];
+  const moq = aggregateMoqCandidates(moqObservations);
+  return withMoqCandidates(withPriceCandidates({
     product: primary.product ?? secondary.product,
-    moq: primary.moq ?? secondary.moq,
+    moq: moqObservations.length ? moq?.value ?? null : primary.moq ?? secondary.moq,
     price: price?.value ?? null,
     supplierLocation: primary.supplierLocation ?? secondary.supplierLocation,
     delivery,
-  }, candidates);
+  }, candidates), moqObservations);
 }
 
 export async function enrichSupplier(
@@ -318,7 +341,6 @@ export async function enrichSupplier(
   deliveryRegion: string,
   search: EnrichmentSearch,
   diagnostics?: EnrichmentDiagnostics,
-  requestedMaxMoq: string | null = null,
   observeEvidence?: (results: EnrichmentSearchResult[]) => void,
 ): Promise<EnrichmentResult> {
   const supplierHostname = supplier.domain
@@ -339,8 +361,7 @@ export async function enrichSupplier(
   });
   const discoveredEvidence = mergeEnrichment(mergeEnrichment(discoveredOfficial, discoveredMarketplace), discoveredExternal);
   let official = empty;
-  const moqRequirement = requestedMaxMoq ? `buyer maximum MOQ ${requestedMaxMoq}` : "";
-  const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price ${moqRequirement} delivery shipping ${deliveryRegion} company legal address`.replace(/\s+/g, " ").trim();
+  const officialQuery = `${requestedProduct} wholesale B2B catalog MOQ minimum order price delivery shipping ${deliveryRegion} company legal address`.replace(/\s+/g, " ").trim();
   try {
     if (!supplierHostname) throw new Error("supplier official domain is unknown");
     const results = await search(
@@ -364,15 +385,14 @@ export async function enrichSupplier(
 
   const collected = mergeEnrichment(discoveredEvidence, official);
   if (collected.delivery.status === "not_available"
-    || (collected.delivery.status === "confirmed" && collected.moq && collected.price)) return collected;
+    || (collected.delivery.status === "confirmed" && collected.price)) return collected;
   const missingFactTerms = [
-    !collected.moq ? "MOQ minimum order wholesale order" : "",
     !collected.price ? "price wholesale price product price" : "",
   ].filter(Boolean).join(" ");
   const factCompletion = collected.delivery.status === "confirmed";
   const externalQuery = factCompletion
     ? `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${missingFactTerms}`.replace(/\s+/g, " ").trim()
-    : `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${moqRequirement} ${deliveryRegion} shipping delivery wholesale distributor`.replace(/\s+/g, " ").trim();
+    : `"${supplier.title}" "${supplierHostname}" ${requestedProduct} ${deliveryRegion} shipping delivery wholesale distributor`.replace(/\s+/g, " ").trim();
   try {
     const externalResults = await search(
       externalQuery,
