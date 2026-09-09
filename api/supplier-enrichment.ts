@@ -1,6 +1,6 @@
 import {
-  aggregatePriceCandidates, extractMoq, extractPrice, extractProduct, priceCandidates, PRICE_CANDIDATES,
-  type ExtractedField, type PriceCandidate,
+  aggregateMoqCandidates, aggregatePriceCandidates, extractMoq, extractPrice, extractProduct, moqCandidates, MOQ_CANDIDATES,
+  priceCandidates, PRICE_CANDIDATES, type ExtractedField, type MoqCandidate, type PriceCandidate,
 } from "./supplier-extraction";
 import { canonicalSupplierDomain, identifySupplier, sourceTypeForUrl } from "./supplier-identity";
 
@@ -23,6 +23,7 @@ export interface EnrichmentResult {
   supplierLocation: string | null;
   delivery: DeliveryVerification;
   [PRICE_CANDIDATES]?: PriceCandidate[];
+  [MOQ_CANDIDATES]?: MoqCandidate[];
 }
 
 export interface EnrichmentSearchResult {
@@ -167,6 +168,11 @@ function withPriceCandidates(result: EnrichmentResult, candidates: PriceCandidat
   return result;
 }
 
+function withMoqCandidates(result: EnrichmentResult, candidates: MoqCandidate[]): EnrichmentResult {
+  if (candidates.length) Object.defineProperty(result, MOQ_CANDIDATES, { value: candidates, enumerable: true });
+  return result;
+}
+
 function diagnosticEvaluation(
   result: EnrichmentSearchResult,
   context: { supplierName: string; supplierHostname: string; deliveryRegion: string; sourceType: EvidenceSource },
@@ -276,9 +282,11 @@ export function extractVerifiedEnrichment(
     : hasNegative && !hasPositive ? "not_available" : "not_confirmed";
   const candidates = priceFields.flatMap(field => priceCandidates(field));
   const aggregatedPrice = aggregatePriceCandidates(candidates);
-  return withPriceCandidates({
+  const moqObservations = moqFields.flatMap(field => moqCandidates(field));
+  const aggregatedMoq = aggregateMoqCandidates(moqObservations);
+  return withMoqCandidates(withPriceCandidates({
     product: oneValue(productFields)?.value ?? null,
-    moq: oneValue(moqFields)?.value ?? null,
+    moq: aggregatedMoq?.value ?? null,
     price: aggregatedPrice?.value ?? null,
     supplierLocation: oneValue(locationFields)?.value ?? null,
     delivery: {
@@ -292,7 +300,7 @@ export function extractVerifiedEnrichment(
           : context.sourceType
       } : {}),
     },
-  }, candidates);
+  }, candidates), moqObservations);
 }
 
 export function mergeEnrichment(primary: EnrichmentResult, secondary?: EnrichmentResult): EnrichmentResult {
@@ -303,13 +311,15 @@ export function mergeEnrichment(primary: EnrichmentResult, secondary?: Enrichmen
     : primary.delivery.status !== "not_confirmed" ? primary.delivery : secondary.delivery;
   const candidates = [...(primary[PRICE_CANDIDATES] ?? []), ...(secondary[PRICE_CANDIDATES] ?? [])];
   const price = aggregatePriceCandidates(candidates);
-  return withPriceCandidates({
+  const moqObservations = [...(primary[MOQ_CANDIDATES] ?? []), ...(secondary[MOQ_CANDIDATES] ?? [])];
+  const moq = aggregateMoqCandidates(moqObservations);
+  return withMoqCandidates(withPriceCandidates({
     product: primary.product ?? secondary.product,
-    moq: primary.moq ?? secondary.moq,
+    moq: moqObservations.length ? moq?.value ?? null : primary.moq ?? secondary.moq,
     price: price?.value ?? null,
     supplierLocation: primary.supplierLocation ?? secondary.supplierLocation,
     delivery,
-  }, candidates);
+  }, candidates), moqObservations);
 }
 
 export async function enrichSupplier(

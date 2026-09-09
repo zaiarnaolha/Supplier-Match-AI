@@ -46,7 +46,6 @@
 .matchBlock { display: flex; align-items: baseline; gap: 7px; }
 .matchBlock span { color: #16804b; font-size: 12px; font-weight: 500; }
 .matchBlock strong { color: #08753b; font-size: 25px; line-height: 1.1; }
-.updatedAt { color: #8b95a8; font-size: 12px; line-height: 1.45; }
 .criteriaArea { min-width: 0; }
 .breakdown { color: #397255; font-size: 12px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
 .criteria { min-width: 0; }

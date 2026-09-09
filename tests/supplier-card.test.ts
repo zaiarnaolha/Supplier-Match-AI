@@ -8,3 +8,9 @@ test("SupplierCard does not render supplier location or a location placeholder",
   assert.doesNotMatch(card, /supplier\.location|MapPin|Не вказано/);
   assert.match(card, /supplier\.name/);
 });
+
+test("SupplierCard does not render a supplier update date", async () => {
+  const source = await readFile(new URL("../src/pages/SupplierSearchPage/SupplierSearchPage.tsx", import.meta.url), "utf8");
+  const card = source.slice(source.indexOf("function SupplierCard"), source.indexOf("function isSpecificRequest"));
+  assert.doesNotMatch(card, /supplier\.updatedAt|Оновлено/);
+});
